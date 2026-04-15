@@ -216,7 +216,27 @@ jobs:
           rustup target list --installed
           echo "Rust target ${{ matrix.target }} installed."
 
+      - name: Check Apple signing secrets
+        id: apple_signing
+        shell: bash
+        run: |
+          if [ "${{ matrix.os }}" = "macos-latest" ] && \
+             [ -n "${{ secrets.APPLE_CERTIFICATE }}" ] && \
+             [ -n "${{ secrets.APPLE_SIGNING_IDENTITY }}" ] && \
+             [ -n "${{ secrets.APPLE_ID }}" ] && \
+             [ -n "${{ secrets.APPLE_PASSWORD }}" ] && \
+             [ -n "${{ secrets.APPLE_TEAM_ID }}" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "Apple signing secrets found, using signed macOS build."
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            if [ "${{ matrix.os }}" = "macos-latest" ]; then
+              echo "Apple signing secrets missing, using unsigned macOS build."
+            fi
+          fi
+
       - name: Tauri build
+        if: ${{ matrix.os != 'macos-latest' || steps.apple_signing.outputs.enabled == 'true' }}
         # 上游 5.24 修改了 latest.json 的生成逻辑，且依赖 tauri-plugin-update 2.10.0 暂未发布，故锁定在 0.5.23 版本
         uses: tauri-apps/tauri-action@v0.6.2
         env:
@@ -230,6 +250,24 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Clash Verge Rev ${{ github.ref_name }}'
+          releaseBody: 'Draft release, will be updated later.'
+          releaseDraft: true
+          prerelease: ${{ contains(github.ref_name, '-rc') }}
+          tauriScript: pnpm
+          args: --target ${{ matrix.target }}
+          includeUpdaterJson: true
+
+      - name: Tauri build for unsigned macOS
+        if: ${{ matrix.os == 'macos-latest' && steps.apple_signing.outputs.enabled != 'true' }}
+        uses: tauri-apps/tauri-action@v0.6.2
+        env:
+          NODE_OPTIONS: '--max_old_space_size=4096'
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'Clash Verge Rev ${{ github.ref_name }}'
