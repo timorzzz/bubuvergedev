@@ -66,7 +66,10 @@ jobs:
       - run: |
           if [ -z "$UPDATE_LOGS" ]; then
             echo "No update logs found, using default message"
-            UPDATE_LOGS="More new features are now supported. Check for detailed changelog soon."
+            UPDATE_LOGS="## 自动构建说明
+
+- 本次为自动构建测试版本，用于功能验证与问题修复确认。
+- 如遇到问题，请优先反馈当前版本号、系统版本和复现步骤。"
           else
             echo "Using found update logs"
           fi
@@ -76,24 +79,31 @@ jobs:
 
           ## 下载地址
 
-          ### Windows (不再支持Win7)
-          #### 正常版本(推荐)
-          - [64位(常用)](${{ env.DOWNLOAD_URL }}/Clash.Verge_${{ env.VERSION }}_x64-setup.exe)
+          ### Windows
+          #### 标准版（推荐）
+          - [Windows x64 安装包](${{ env.DOWNLOAD_URL }}/Clash.Verge_${{ env.VERSION }}_x64-setup.exe)
 
-          #### 内置WebView2版本(体积较大，仅在企业版系统或无法安装WebView2时使用)
-          - [64位](${{ env.DOWNLOAD_URL }}/Clash.Verge_${{ env.VERSION }}_x64_fixed_webview2-setup.exe)
+          #### 内置 WebView2 版
+          - [Windows x64 内置 WebView2 安装包](${{ env.DOWNLOAD_URL }}/Clash.Verge_${{ env.VERSION }}_x64_fixed_webview2-setup.exe)
 
           ### macOS
-          - [Apple M芯片](${{ env.DOWNLOAD_URL }}/Clash.Verge_${{ env.VERSION }}_aarch64.dmg) | [Intel芯片](${{ env.DOWNLOAD_URL }}/Clash.Verge_${{ env.VERSION }}_x64.dmg)
+          - [Apple 芯片版](${{ env.DOWNLOAD_URL }}/Clash.Verge_${{ env.VERSION }}_aarch64.dmg)
+          - [Intel 芯片版](${{ env.DOWNLOAD_URL }}/Clash.Verge_${{ env.VERSION }}_x64.dmg)
 
           ### Linux
-          #### DEB包(Debian系) 使用 apt ./路径 安装
-          - [64位](${{ env.DOWNLOAD_URL }}/Clash.Verge_${{ env.VERSION }}_amd64.deb)
+          #### DEB 包
+          - [Linux x64 DEB 安装包](${{ env.DOWNLOAD_URL }}/Clash.Verge_${{ env.VERSION }}_amd64.deb)
 
-          #### RPM包(Redhat系) 使用 dnf ./路径 安装
-          - [64位](${{ env.DOWNLOAD_URL }}/Clash.Verge-${{ env.VERSION }}-1.x86_64.rpm)
+          #### RPM 包
+          - [Linux x64 RPM 安装包](${{ env.DOWNLOAD_URL }}/Clash.Verge-${{ env.VERSION }}-1.x86_64.rpm)
 
-          Created at ${{ env.BUILDTIME }}.
+          ## 说明
+
+          - 当前页面为公开发布仓库的自动构建版本。
+          - 自动构建版本可能包含最新改动，适合测试和预览使用。
+          - 如需稳定版本，请以正式版本发布页为准。
+
+          构建时间：${{ env.BUILDTIME }}
           EOF
 
       - name: Upload Release
@@ -399,7 +409,8 @@ jobs:
     needs:
       [
         update_tag,
-        autobuild-x86-windows-macos-linux,        autobuild-x86-arm-windows_webview2,
+        autobuild-x86-windows-macos-linux,
+        autobuild-x86-arm-windows_webview2,
       ]
     steps:
       - name: Check Telegram token
@@ -452,12 +463,13 @@ jobs:
           echo "DOWNLOAD_URL=https://github.com/${{ env.RELEASE_REPOSITORY }}/releases/download/autobuild" >> $GITHUB_ENV
           echo "BUILDTIME=$(TZ=Asia/Shanghai date)" >> $GITHUB_ENV
 
-      - name: Generate release.txt
-        if: ${{ steps.telegram_guard.outputs.enabled == 'true' }}
-        run: |
+      - run: |
           if [ -z "$UPDATE_LOGS" ]; then
             echo "No update logs found, using default message"
-            UPDATE_LOGS="More new features are now supported. Check for detailed changelog soon."
+            UPDATE_LOGS="## 自动构建说明
+
+- 本次为自动构建测试版本，用于功能验证与问题修复确认。
+- 如遇到问题，请优先反馈当前版本号、系统版本和复现步骤。"
           else
             echo "Using found update logs"
           fi
@@ -467,24 +479,31 @@ jobs:
 
           ## 下载地址
 
-          ### Windows (不再支持Win7)
-          #### 正常版本(推荐)
-          - [64位(常用)](${{ env.DOWNLOAD_URL }}/Clash.Verge_${{ env.VERSION }}_x64-setup.exe)
+          ### Windows
+          #### 标准版（推荐）
+          - [Windows x64 安装包](${{ env.DOWNLOAD_URL }}/Clash.Verge_${{ env.VERSION }}_x64-setup.exe)
 
-          #### 内置WebView2版本(体积较大，仅在企业版系统或无法安装WebView2时使用)
-          - [64位](${{ env.DOWNLOAD_URL }}/Clash.Verge_${{ env.VERSION }}_x64_fixed_webview2-setup.exe)
+          #### 内置 WebView2 版
+          - [Windows x64 内置 WebView2 安装包](${{ env.DOWNLOAD_URL }}/Clash.Verge_${{ env.VERSION }}_x64_fixed_webview2-setup.exe)
 
           ### macOS
-          - [Apple M芯片](${{ env.DOWNLOAD_URL }}/Clash.Verge_${{ env.VERSION }}_aarch64.dmg) | [Intel芯片](${{ env.DOWNLOAD_URL }}/Clash.Verge_${{ env.VERSION }}_x64.dmg)
+          - [Apple 芯片版](${{ env.DOWNLOAD_URL }}/Clash.Verge_${{ env.VERSION }}_aarch64.dmg)
+          - [Intel 芯片版](${{ env.DOWNLOAD_URL }}/Clash.Verge_${{ env.VERSION }}_x64.dmg)
 
           ### Linux
-          #### DEB包(Debian系) 使用 apt ./路径 安装
-          - [64位](${{ env.DOWNLOAD_URL }}/Clash.Verge_${{ env.VERSION }}_amd64.deb)
+          #### DEB 包
+          - [Linux x64 DEB 安装包](${{ env.DOWNLOAD_URL }}/Clash.Verge_${{ env.VERSION }}_amd64.deb)
 
-          #### RPM包(Redhat系) 使用 dnf ./路径 安装
-          - [64位](${{ env.DOWNLOAD_URL }}/Clash.Verge-${{ env.VERSION }}-1.x86_64.rpm)
+          #### RPM 包
+          - [Linux x64 RPM 安装包](${{ env.DOWNLOAD_URL }}/Clash.Verge-${{ env.VERSION }}-1.x86_64.rpm)
 
-          Created at ${{ env.BUILDTIME }}.
+          ## 说明
+
+          - 当前页面为公开发布仓库的自动构建版本。
+          - 自动构建版本可能包含最新改动，适合测试和预览使用。
+          - 如需稳定版本，请以正式版本发布页为准。
+
+          构建时间：${{ env.BUILDTIME }}
           EOF
 
       - name: Send Telegram Notification
@@ -496,4 +515,3 @@ jobs:
           VERSION: ${{ env.VERSION }}
           DOWNLOAD_URL: ${{ env.DOWNLOAD_URL }}
           RELEASE_REPOSITORY: ${{ env.RELEASE_REPOSITORY }}
-
