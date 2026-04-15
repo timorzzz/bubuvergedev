@@ -1,0 +1,25 @@
+# pack-refs with: peeled fully-peeled 
+cace167d52ee4e772437ef48af4bfec1a8942f4e refs/heads/dev
+3750449abe43b86206c06c43229545bdeefdc6af refs/remotes/origin/ShadowsocksR-for-Windows-with-login-support
+57a06cb1823d23bc7b8e292028a7a33006da1068 refs/remotes/origin/app
+cace167d52ee4e772437ef48af4bfec1a8942f4e refs/remotes/origin/dev
+3913d09b1605149ac6764ea40aa5bcd1497a0132 refs/remotes/origin/feat/api
+fa4289c1e47ab555d7f17eba609195d6eb3bb457 refs/remotes/origin/feat/user/edit
+8705d11b31cf18c9656b807869f72811c40c813b refs/remotes/origin/job_clean
+1a48707eb2140427c815b4c11bc7c803846d2c6b refs/remotes/origin/master
+41135f73a8692acbf961cf6a99dd8e2f3f25ac55 refs/remotes/origin/tutorial-to-markdown
+2bc2c91376c9f832dd136bc0fad0bada291efaec refs/remotes/origin/use_es6_fetch
+7e0b82c917d73219a40f6c023cb6fe9d725ce1d9 refs/remotes/origin/伪分组
+7a84ebc34e016f16586c7ac5db0775f1e0b84163 refs/remotes/origin/前端端口偏移
+a5eb62c3695791cc364bcccf622855518351d3be refs/remotes/origin/节点分级
+6c3e12aecdfae29b9cceeb3f96d44b19cc0945a9 refs/remotes/origin/节点自动分组
+6c3e12aecdfae29b9cceeb3f96d44b19cc0945a9 refs/remotes/origin/节点自动分组_备份
+e8277004d92a98013f2fdf8c118e210265521f05 refs/tags/2019.07
+ae99bee5a4e2589b53ae80191ad4b52af08d0266 refs/tags/2019.08
+e8277004d92a98013f2fdf8c118e210265521f05 refs/tags/2019Jul
+e2fb0dfa92ed445026d08c81e59643818a60ef78 refs/tags/2019Sep
+^f9284e64244258f923b4169cc467bc72513e7332
+8d5e7bcd3faad6471d480019846e5140646bc1bc refs/tags/v1.0.0
+d46eb258273b7e5f62fd3c249b09138756a73a45 refs/tags/v1.2.0
+73a7571e1cc11ce80ed6be70dd9a1d2abad84b5b refs/tags/v2.2.0
+e8277004d92a98013f2fdf8c118e210265521f05 refs/tags/v3.0.0

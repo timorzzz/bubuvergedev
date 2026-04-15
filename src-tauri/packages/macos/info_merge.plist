@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>AssociatedBundleIdentifiers</key>
+    <array>
+        <string>uk.bluelayer.client.service</string>
+    </array>
+    <key>CFBundleDisplayName</key>
+    <string>Bluelayer 加速器</string>
+    <key>CFBundleName</key>
+    <string>Bluelayer 加速器</string>
+    <key>CFBundleSpokenName</key>
+    <string>Bluelayer 加速器</string>
+</dict>
+</plist>

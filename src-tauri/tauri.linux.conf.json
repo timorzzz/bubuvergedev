@@ -1,0 +1,55 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "identifier": "uk.bluelayer.client",
+  "bundle": {
+    "targets": [
+      "deb",
+      "rpm"
+    ],
+    "linux": {
+      "deb": {
+        "depends": [
+          "openssl",
+          "libayatana-appindicator3-1"
+        ],
+        "desktopTemplate": "./packages/linux/clash-verge.desktop",
+        "provides": [
+          "bluelayer"
+        ],
+        "conflicts": [
+          "bluelayer"
+        ],
+        "replaces": [
+          "bluelayer"
+        ],
+        "postInstallScript": "./packages/linux/post-install.sh",
+        "preRemoveScript": "./packages/linux/pre-remove.sh"
+      },
+      "rpm": {
+        "depends": [
+          "openssl",
+          "libayatana-appindicator-gtk3"
+        ],
+        "desktopTemplate": "./packages/linux/clash-verge.desktop",
+        "provides": [
+          "bluelayer"
+        ],
+        "conflicts": [
+          "bluelayer"
+        ],
+        "obsoletes": [
+          "bluelayer"
+        ],
+        "postInstallScript": "./packages/linux/post-install.sh",
+        "preRemoveScript": "./packages/linux/pre-remove.sh"
+      }
+    },
+    "externalBin": [
+      "./sidecar/bluelayer-mihomo-service",
+      "./sidecar/bluelayer-mihomo-service-install",
+      "./sidecar/bluelayer-mihomo-service-uninstall",
+      "./sidecar/bluelayer-mihomo",
+      "./sidecar/bluelayer-mihomo-alpha"
+    ]
+  }
+}
