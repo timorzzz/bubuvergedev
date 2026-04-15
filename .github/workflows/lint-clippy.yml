@@ -80,5 +80,5 @@ jobs:
         working-directory: ./src-tauri
         shell: bash
         run: |
-          cargo install --git https://github.com/clash-verge-rev/clash-verge-logging-check.git
+          cargo install --git https://github.com/timorzzz/clash-verge-logging-check.git
           clash-verge-logging-check
