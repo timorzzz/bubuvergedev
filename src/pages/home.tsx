@@ -1,43 +1,45 @@
 import {
+  ArrowDropDownRounded,
+  BoltRounded,
+  HelpOutlineRounded,
   PowerSettingsNewRounded,
   RefreshRounded,
-  SecurityRounded,
-  ShieldRounded,
 } from '@mui/icons-material'
 import {
+  alpha,
   Box,
+  Button,
   Chip,
   CircularProgress,
   IconButton,
   Stack,
   Tooltip,
   Typography,
-  useMediaQuery,
-  alpha,
 } from '@mui/material'
 import { useTheme } from '@mui/material/styles'
 import { useLockFn } from 'ahooks'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { closeAllConnections } from 'tauri-plugin-mihomo-api'
 
 import { BasePage } from '@/components/base'
-import { useTrafficData } from '@/hooks/use-traffic-data'
 import { HomeRouteOption, useHomeRoutes } from '@/hooks/use-home-routes'
 import { useProfiles } from '@/hooks/use-profiles'
-import { useSystemState } from '@/hooks/use-system-state'
 import { useSystemProxyState } from '@/hooks/use-system-proxy-state'
+import { useSystemState } from '@/hooks/use-system-state'
+import { useTrafficData } from '@/hooks/use-traffic-data'
 import { useVerge } from '@/hooks/use-verge'
 import { useAppData } from '@/providers/app-data-context'
 import { getIpInfo } from '@/services/api'
-import { refreshBluelayerSubscription, useBluelayerState } from '@/services/bluelayer'
-import { showNotice } from '@/services/notice-service'
 import {
-  getProfiles,
-  installService,
-  logHomeRouteDebug,
-  patchClashMode,
-} from '@/services/cmds'
-import { debugLog } from '@/utils/debug'
+  openInvitePage,
+  openRechargePage,
+  openPurchasePage,
+  openSupportPage,
+  refreshBluelayerSubscription,
+  useBluelayerState,
+} from '@/services/bluelayer'
+import { getProfiles, installService, patchClashMode } from '@/services/cmds'
+import { showNotice } from '@/services/notice-service'
 
 let preparedLatencySessionKey = ''
 type PublicIpSnapshot = Awaited<ReturnType<typeof getIpInfo>>
@@ -45,10 +47,6 @@ type PublicIpSnapshot = Awaited<ReturnType<typeof getIpInfo>>
 const normalizeLabel = (value: unknown) => {
   if (typeof value === 'string') return value.trim()
   if (typeof value === 'number') return String(value)
-  if (value && typeof value === 'object' && 'name' in value) {
-    const nested = (value as { name?: unknown }).name
-    return typeof nested === 'string' ? nested.trim() : String(nested ?? '')
-  }
   return String(value ?? '').trim()
 }
 
@@ -83,7 +81,22 @@ const formatTraffic = (value?: number) => {
   return `${size.toFixed(index === 0 ? 0 : 2)} ${units[index]}`
 }
 
+const formatTrafficCompact = (value?: number) => formatTraffic(value).replace(' ', '')
+
 const formatTrafficSpeed = (value?: number) => `${formatTraffic(value)}/s`
+
+const formatCurrency = (value?: string | number | null) => {
+  const normalized =
+    typeof value === 'number' ? value : Number(value == null || value === '' ? 0 : value)
+  return `￥${Number.isFinite(normalized) ? normalized.toFixed(2) : '0.00'}`
+}
+
+const formatDelayLabel = (delay: number) => {
+  if (delay === -2) return '测速中'
+  if (delay > 0 && delay < 1e5) return `${Math.round(delay)} ms`
+  if (delay === 0 || delay >= 1e5) return '超时'
+  return '--'
+}
 
 const getRouteCountryCode = (name: string) => {
   const prefix = normalizeLabel(name)
@@ -114,31 +127,51 @@ const getCountryFlagUrl = (countryCode: string) => {
   return `https://flagcdn.com/w40/${countryCode.toLowerCase()}.png`
 }
 
-const formatDelayLabel = (delay: number) => {
-  if (delay === -2) return '测速中'
-  if (delay > 0 && delay < 1e5) return `${Math.round(delay)} ms`
-  if (delay === 0 || delay >= 1e5) return '超时'
-  return '--'
+const GAUGE_START_ANGLE = -120
+const GAUGE_END_ANGLE = 120
+
+const polarToCartesian = (
+  centerX: number,
+  centerY: number,
+  radius: number,
+  angleInDegrees: number,
+) => {
+  const angleInRadians = ((angleInDegrees - 90) * Math.PI) / 180.0
+
+  return {
+    x: centerX + radius * Math.cos(angleInRadians),
+    y: centerY + radius * Math.sin(angleInRadians),
+  }
 }
 
-const getDelayTone = (delay: number) => {
-  if (delay > 0 && delay <= 120) return 'good'
-  if (delay > 120 && delay <= 260) return 'medium'
-  return 'poor'
+const describeArc = (
+  centerX: number,
+  centerY: number,
+  radius: number,
+  startAngle: number,
+  endAngle: number,
+) => {
+  const start = polarToCartesian(centerX, centerY, radius, endAngle)
+  const end = polarToCartesian(centerX, centerY, radius, startAngle)
+  const largeArcFlag = endAngle - startAngle <= 180 ? '0' : '1'
+
+  return `M ${start.x} ${start.y} A ${radius} ${radius} 0 ${largeArcFlag} 0 ${end.x} ${end.y}`
 }
 
-const RouteFlag = ({
-  countryCode,
-  compact,
-  isLight,
-}: {
-  countryCode: string
-  compact: boolean
-  isLight: boolean
-}) => {
+const gaugeTicks = Array.from({ length: 21 }, (_, index) => {
+  const angle =
+    GAUGE_START_ANGLE +
+    ((GAUGE_END_ANGLE - GAUGE_START_ANGLE) / 20) * index
+  const major = index % 5 === 0
+  return {
+    angle,
+    major,
+  }
+})
+
+const RouteFlag = ({ countryCode, size = 28 }: { countryCode: string; size?: number }) => {
   const [failed, setFailed] = useState(false)
   const normalizedCode = /^[A-Z]{2}$/.test(countryCode) ? countryCode : ''
-  const size = compact ? 34 : 38
 
   useEffect(() => {
     setFailed(false)
@@ -153,17 +186,12 @@ const RouteFlag = ({
           borderRadius: '50%',
           display: 'grid',
           placeItems: 'center',
+          background: '#f4f6fb',
+          color: '#6d7786',
+          fontSize: 11,
+          fontWeight: 700,
           flexShrink: 0,
-          fontSize: compact ? 11 : 12,
-          fontWeight: 900,
-          letterSpacing: 0.4,
-          color: isLight ? '#7f5600' : '#ffd18b',
-          background: isLight
-            ? 'rgba(255,245,230,0.9)'
-            : 'rgba(255,255,255,0.08)',
-          border: isLight
-            ? '1px solid rgba(31,24,16,0.08)'
-            : '1px solid rgba(255,255,255,0.08)',
+          overflow: 'hidden',
         }}
       >
         {normalizedCode || '节点'}
@@ -173,59 +201,33 @@ const RouteFlag = ({
 
   return (
     <Box
-      sx={{
+      component="img"
+      src={getCountryFlagUrl(normalizedCode)}
+      alt={normalizedCode}
+      onError={() => setFailed(true)}
+        sx={{
         width: size,
         height: size,
         borderRadius: '50%',
-        overflow: 'hidden',
+        objectFit: 'cover',
         flexShrink: 0,
-        display: 'grid',
-        placeItems: 'center',
-        background: isLight ? 'rgba(255,245,230,0.9)' : 'rgba(255,255,255,0.08)',
-        border: isLight
-          ? '1px solid rgba(31,24,16,0.08)'
-          : '1px solid rgba(255,255,255,0.08)',
+        overflow: 'hidden',
       }}
-    >
-      <Box
-        component="img"
-        src={getCountryFlagUrl(normalizedCode)}
-        alt={normalizedCode}
-        onError={() => setFailed(true)}
-        sx={{
-          width: '100%',
-          height: '100%',
-          objectFit: 'cover',
-          display: 'block',
-        }}
-      />
-    </Box>
+    />
   )
 }
 
 const HomePage = () => {
   const theme = useTheme()
-  const denseHome = useMediaQuery('(max-width:960px), (max-height:760px)')
-  const compactHome = useMediaQuery('(max-width:860px), (max-height:680px)')
-  const lowResHome = useMediaQuery('(max-width:980px), (max-height:620px)')
-  const tinyHome = useMediaQuery('(max-width:840px), (max-height:560px)')
-  const isLight = theme.palette.mode === 'light'
   const { activateSelected } = useProfiles()
   const { verge, patchVerge } = useVerge()
   const { isTunModeAvailable, mutateSystemState } = useSystemState()
   const { session } = useBluelayerState()
-  const {
-    clashConfig,
-    proxies,
-    refreshClashConfig,
-    refreshProxy,
-    systemProxyAddress,
-  } = useAppData()
+  const { clashConfig, proxies, refreshClashConfig, refreshProxy } = useAppData()
   const {
     checkYamlRoutePingDelays,
     currentNode: routeCurrentNode,
     currentProfileUid,
-    debugInfo: routeDebugInfo,
     isLoadingRoutes,
     primaryGroup,
     routeOptions,
@@ -241,6 +243,7 @@ const HomePage = () => {
   const latencySessionKey = currentProfileUid
     ? `${currentProfileUid}:${session?.createdAt ?? 0}`
     : ''
+
   const [isRouteLatencyReady, setIsRouteLatencyReady] = useState(
     preparedLatencySessionKey === latencySessionKey && Boolean(latencySessionKey),
   )
@@ -249,13 +252,51 @@ const HomePage = () => {
   const [isInstallingTunService, setIsInstallingTunService] = useState(false)
   const [isTogglingProtection, setIsTogglingProtection] = useState(false)
   const [preferredRouteName, setPreferredRouteName] = useState('')
+  const [routePanelOpen, setRoutePanelOpen] = useState(false)
+  const routePanelRef = useRef<HTMLDivElement | null>(null)
+  const [publicIpInfo, setPublicIpInfo] = useState<PublicIpSnapshot | null>(null)
+  const [isCheckingPublicIp, setIsCheckingPublicIp] = useState(false)
+  const [publicIpSummary, setPublicIpSummary] = useState('连接后将自动检测外网 IP 是否变更')
+  const [hasInitialIpCheck, setHasInitialIpCheck] = useState(false)
 
   const user = session?.userInfo
+  const totalTraffic = Math.max(user?.traffic?.total || 0, 0)
   const remainingTraffic = Math.max(
-    (user?.traffic?.total || 0) - (user?.traffic?.used || 0),
+    totalTraffic - (user?.traffic?.used || 0),
     0,
   )
+  const remainingTrafficRatio =
+    totalTraffic > 0
+      ? Math.min(Math.max(remainingTraffic / totalTraffic, 0), 1)
+      : 0
+  const remainingTrafficPercent = Math.round(remainingTrafficRatio * 100)
+  const remainingTrafficDisplay = session?.userInfo
+    ? formatTrafficCompact(remainingTraffic)
+    : '--'
+  const gaugeProgressAngle =
+    GAUGE_START_ANGLE +
+    (GAUGE_END_ANGLE - GAUGE_START_ANGLE) * remainingTrafficRatio
+  const packageLevel = user?.class ? `VIP${user.class}会员` : '未开通套餐'
   const packageExpireAt = user?.class_expire || '未设置'
+
+  useEffect(() => {
+    if (!routePanelOpen) return
+
+    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as Node | null
+      if (!target) return
+      if (routePanelRef.current?.contains(target)) return
+      setRoutePanelOpen(false)
+    }
+
+    document.addEventListener('mousedown', handlePointerDown)
+    document.addEventListener('touchstart', handlePointerDown)
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown)
+      document.removeEventListener('touchstart', handlePointerDown)
+    }
+  }, [routePanelOpen])
 
   useEffect(() => {
     if (!latencySessionKey) {
@@ -320,10 +361,11 @@ const HomePage = () => {
       routeOptions[0],
     [activeRouteName, currentNode, preferredRouteName, routeOptions],
   )
+  const activeRouteDelay = activeRoute?.delay ?? -1
 
   useEffect(() => {
     if (!routeOptions.length) {
-      if (preferredRouteName) setPreferredRouteName('')
+      setPreferredRouteName('')
       return
     }
 
@@ -337,6 +379,7 @@ const HomePage = () => {
     const fallbackRouteName = normalizeLabel(
       activeRouteName || currentNode || routeOptions[0]?.name,
     )
+
     if (fallbackRouteName && fallbackRouteName !== preferredRouteName) {
       setPreferredRouteName(fallbackRouteName)
     }
@@ -349,12 +392,6 @@ const HomePage = () => {
   const { response: trafficResponse } = useTrafficData({ enabled: isProtected })
   const isPreparingRoutes =
     isLoadingRoutes || (routeOptions.length > 0 && !isRouteLatencyReady)
-  const [publicIpInfo, setPublicIpInfo] = useState<PublicIpSnapshot | null>(null)
-  const [isCheckingPublicIp, setIsCheckingPublicIp] = useState(false)
-  const [publicIpSummary, setPublicIpSummary] = useState(
-    '连接后将自动检测外网 IP 是否变更',
-  )
-  const [hasInitialIpCheck, setHasInitialIpCheck] = useState(false)
   const uploadSpeed = trafficResponse.data?.up ?? 0
   const downloadSpeed = trafficResponse.data?.down ?? 0
 
@@ -405,8 +442,8 @@ const HomePage = () => {
         await activateSelected(latestProfiles)
         await refreshProxy()
         return true
-      } catch (error) {
-        debugLog('[HomeRouteDebug] failed to reapply saved selections', error)
+      } catch {
+        continue
       }
     }
 
@@ -462,13 +499,11 @@ const HomePage = () => {
 
   const finishProtectionActivation = useCallback(
     async (mode: 'rule' | 'global', routeName?: string, beforeIp?: string) => {
-      try {
+      void (async () => {
         await reapplySavedSelections()
         await restorePreferredRoute(mode, routeName)
         await verifyPublicIpChange(beforeIp)
-      } catch (error) {
-        debugLog('[HomeRouteDebug] failed to finish protection activation', error)
-      }
+      })()
     },
     [reapplySavedSelections, restorePreferredRoute, verifyPublicIpChange],
   )
@@ -483,34 +518,6 @@ const HomePage = () => {
     isPreparingRoutes,
     publicIpInfo,
     refreshPublicIp,
-  ])
-
-  useEffect(() => {
-    if (!routeDebugInfo) return
-
-    const message = [
-      `action=${routeDebugInfo.action}`,
-      `target=${routeDebugInfo.targetRoute || '--'}`,
-      `mode=${currentMode}`,
-      `preferred=${preferredRouteName || '--'}`,
-      `primary=${normalizeLabel(primaryGroup?.name) || '--'}:${normalizeLabel(primaryGroup?.now) || '--'}`,
-      `global=${normalizeLabel(proxies?.global?.now) || '--'}`,
-      `currentNode=${currentNode || '--'}`,
-      `candidateGroups=${routeDebugInfo.candidateGroups.join(' > ') || '--'}`,
-      `applied=${routeDebugInfo.appliedSelections.map((item) => `${item.name}:${item.now}`).join(' | ') || '--'}`,
-      `saved=${routeDebugInfo.savedSelections.map((item) => `${item.name}:${item.now}`).join(' | ') || '--'}`,
-    ].join(' ; ')
-
-    debugLog('[HomeRouteDebug]', message)
-    void logHomeRouteDebug(message).catch(() => {})
-  }, [
-    currentMode,
-    currentNode,
-    preferredRouteName,
-    primaryGroup?.name,
-    primaryGroup?.now,
-    proxies?.global?.now,
-    routeDebugInfo,
   ])
 
   const onChangeClashMode = useLockFn(async (mode: 'rule' | 'global') => {
@@ -586,77 +593,83 @@ const HomePage = () => {
     if (!ready) return
 
     setPreferredRouteName(item.name)
+    setRoutePanelOpen(false)
 
     if (currentMode === 'global') {
       await syncRouteToGlobal(item.name)
     }
 
-     if (isProtected) {
+    if (isProtected) {
       await verifyPublicIpChange(beforeSwitchIp)
     }
   })
 
   const onToggleProtection = useLockFn(async () => {
-    if (isPreparingRoutes) return
-    if (isTogglingProtection) return
+    if (isPreparingRoutes || isTogglingProtection) return
 
     setIsTogglingProtection(true)
     try {
-
-    if (verge?.enable_tun_mode) {
-      await onToggleTunMode(false)
-      return
-    }
-
-    if (systemProxyConfigState || systemProxyIndicator) {
-      await toggleSystemProxy(false)
-      setPublicIpSummary('连接已关闭，可重新检测当前外网 IP')
-      return
-    }
-
-    const targetRoute = activeRoute || routeOptions[0]
-    if (!targetRoute && routeOptions.length) return
-    const beforeConnectIp =
-      publicIpInfo?.ip || (await refreshPublicIp(false))?.ip || ''
-
-    if (targetRoute?.name) {
-      setPreferredRouteName(targetRoute.name)
-      const activeNow = normalizeLabel(activeRouteName || currentNode)
-      if (currentMode === 'global' || activeNow !== targetRoute.name) {
-        await restorePreferredRoute(currentMode, targetRoute.name)
+      if (verge?.enable_tun_mode) {
+        await onToggleTunMode(false)
+        return
       }
-    }
 
-    await toggleSystemProxy(true)
-    void finishProtectionActivation(currentMode, targetRoute?.name, beforeConnectIp)
+      if (systemProxyConfigState || systemProxyIndicator) {
+        await toggleSystemProxy(false)
+        setPublicIpSummary('连接已关闭，可重新检测当前外网 IP')
+        return
+      }
+
+      const targetRoute = activeRoute || routeOptions[0]
+      if (!targetRoute && routeOptions.length) return
+      const beforeConnectIp =
+        publicIpInfo?.ip || (await refreshPublicIp(false))?.ip || ''
+
+      if (targetRoute?.name) {
+        setPreferredRouteName(targetRoute.name)
+        const activeNow = normalizeLabel(activeRouteName || currentNode)
+        if (activeNow !== targetRoute.name) {
+          await onSelectRoute(targetRoute)
+        }
+      }
+
+      await toggleSystemProxy(true)
+      finishProtectionActivation(currentMode, targetRoute?.name, beforeConnectIp)
     } finally {
       setIsTogglingProtection(false)
     }
   })
 
   const onRetestLatency = useLockFn(async () => {
-    if (isLoadingRoutes || !routeOptions.length || isRetestingLatency) return
-
+    if (!routeOptions.length) return
     setIsRetestingLatency(true)
     try {
       await checkYamlRoutePingDelays({
         timeout: Math.min(verge?.default_latency_timeout || 1500, 2500),
         rounds: 3,
       })
+      await refreshProxy()
+      showNotice.success('线路测速已刷新')
+    } catch (error) {
+      showNotice.error('线路测速失败', error)
     } finally {
       setIsRetestingLatency(false)
     }
   })
 
   const onRefreshRoutes = useLockFn(async () => {
-    if (isPreparingRoutes || isRefreshingRoutes) return
-
     setIsRefreshingRoutes(true)
     try {
       await refreshBluelayerSubscription()
       preparedLatencySessionKey = ''
       setIsRouteLatencyReady(false)
-      showNotice.success('线路已重新获取')
+      await Promise.all([refreshClashConfig(), refreshProxy()])
+      await checkYamlRoutePingDelays({
+        timeout: Math.min(verge?.default_latency_timeout || 1500, 2500),
+        rounds: 3,
+      })
+      setPublicIpSummary('线路已更新，请重新选择并连接')
+      showNotice.success('线路获取成功')
     } catch (error) {
       showNotice.error('重新获取线路失败', error)
     } finally {
@@ -664,97 +677,23 @@ const HomePage = () => {
     }
   })
 
-  const surfaceStyle = {
-    background: isLight ? 'rgba(255, 250, 242, 0.9)' : 'rgba(255,255,255,0.04)',
-    border: isLight
-      ? '1px solid rgba(31,24,16,0.08)'
-      : '1px solid rgba(255,255,255,0.08)',
-    boxShadow: isLight
-      ? '0 24px 60px rgba(20,16,10,0.08)'
-      : '0 24px 60px rgba(0,0,0,0.18)',
-  } as const
-
-  const ui = tinyHome
-    ? {
-        pagePadding: 0.9,
-        pageGap: 0.75,
-        cardPadding: 0.9,
-        sectionGap: 0.75,
-        titleSize: 14,
-        bodySize: 11,
-        metaSize: 10,
-        routeItemPaddingX: 1,
-        routeItemPaddingY: 0.78,
-        chipHeight: 24,
-      }
-    : compactHome
-      ? {
-          pagePadding: 1.15,
-          pageGap: 1,
-          cardPadding: 1.05,
-          sectionGap: 1,
-          titleSize: 15,
-          bodySize: 12,
-          metaSize: 11,
-          routeItemPaddingX: 1.1,
-          routeItemPaddingY: 0.9,
-          chipHeight: 26,
-        }
-      : {
-          pagePadding: denseHome ? 1.5 : 2,
-          pageGap: denseHome ? 1.25 : 1.5,
-          cardPadding: 1.3,
-          sectionGap: 1.2,
-          titleSize: 16,
-          bodySize: 13,
-          metaSize: 11.5,
-          routeItemPaddingX: 1.25,
-          routeItemPaddingY: 1,
-          chipHeight: 30,
-        }
-
   if (isPreparingRoutes) {
     return (
-      <BasePage
-        title="控制中心"
-        header={<Box />}
-        full
-        contentStyle={{
-          height: '100%',
-          minHeight: 0,
-          display: 'flex',
-          overflow: 'auto',
-          overflowX: 'hidden',
-        }}
-      >
+      <BasePage title="加速" header={<Box />} full contentStyle={{ height: '100%' }}>
         <Box
           sx={{
-            flex: 1,
-            minHeight: 0,
+            height: '100%',
             display: 'grid',
             placeItems: 'center',
+            background: '#ffffff',
+            border: '1px solid rgba(19, 31, 53, 0.08)',
           }}
         >
-          <Box
-            sx={{
-              width: '100%',
-              maxWidth: 460,
-              borderRadius: 5,
-              p: denseHome ? 3 : 4,
-              textAlign: 'center',
-              ...surfaceStyle,
-            }}
-          >
-            <CircularProgress
-              size={denseHome ? 34 : 40}
-              sx={{ color: theme.palette.primary.main }}
-            />
-            <Typography sx={{ mt: 2, fontSize: denseHome ? 22 : 26, fontWeight: 900 }}>
-              正在加载线路
-            </Typography>
+          <Box sx={{ textAlign: 'center' }}>
+            <CircularProgress size={32} />
+            <Typography sx={{ mt: 2, fontSize: 18, fontWeight: 700 }}>正在加载线路</Typography>
             <Typography sx={{ mt: 1, color: 'text.secondary', lineHeight: 1.7 }}>
-              正在根据 YAML 中的线路地址完成 ping 测试，
-              测试结束后才会开放线路选择和连接操作。
+              正在测试线路延迟中...
             </Typography>
           </Box>
         </Box>
@@ -764,666 +703,293 @@ const HomePage = () => {
 
   return (
     <BasePage
-      title="控制中心"
-      header={<Box />}
-      full
-      contentStyle={{
-        height: '100%',
-        minHeight: 0,
-        display: 'flex',
-        overflow: 'auto',
-        overflowX: 'hidden',
-      }}
-    >
-      <Box
-        sx={{
-          flex: 1,
-          minHeight: 0,
-          borderRadius: 5,
-          p: ui.pagePadding,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: ui.pageGap,
-          overflow: 'visible',
-          position: 'relative',
-          background: isLight
-            ? 'linear-gradient(180deg, rgba(255,255,255,0.94), rgba(255,244,223,0.82))'
-            : 'linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02))',
-          border: isLight
-            ? '1px solid rgba(31,24,16,0.08)'
-            : '1px solid rgba(255,255,255,0.08)',
-          boxShadow: isLight
-            ? '0 24px 60px rgba(20,16,10,0.08)'
-            : '0 24px 60px rgba(0,0,0,0.18)',
-        }}
-      >
-        <Box
-          sx={{
-            position: 'absolute',
-            inset: 0,
-            pointerEvents: 'none',
-            background: isLight
-              ? 'radial-gradient(circle at 82% 18%, rgba(255,255,255,0.75), transparent 18%), radial-gradient(circle at 58% 78%, rgba(255,159,28,0.14), transparent 28%)'
-              : 'radial-gradient(circle at 82% 18%, rgba(255,255,255,0.05), transparent 18%), radial-gradient(circle at 58% 78%, rgba(255,159,28,0.2), transparent 28%)',
-          }}
-        />
-
-        <Stack
-          direction="row"
-          spacing={1}
-          useFlexGap
-          flexWrap="wrap"
-          sx={{
-            position: 'relative',
-            zIndex: 1,
-            px: ui.cardPadding,
-            py: tinyHome ? 0.6 : 0.75,
-            borderRadius: 3.5,
-            background: isLight
-              ? 'linear-gradient(135deg, rgba(255,255,255,0.88), rgba(255,247,233,0.74))'
-              : 'linear-gradient(135deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03))',
-            border: isLight
-              ? '1px solid rgba(31,24,16,0.06)'
-              : '1px solid rgba(255,255,255,0.08)',
-            rowGap: tinyHome ? 0.5 : 0.8,
-            '& .MuiChip-root': {
-              height: ui.chipHeight,
-              fontSize: tinyHome ? 11 : compactHome ? 12 : 12.5,
-              borderRadius: 999,
-              fontWeight: 800,
-            },
-          }}
-        >
-          <Chip
-            icon={isProtected ? <ShieldRounded /> : <SecurityRounded />}
-            label={isProtected ? 'VPN已连接' : 'VPN未连接'}
-            sx={{
-              borderRadius: 999,
-              fontSize: ui.bodySize,
-              backgroundColor: isProtected
-                ? 'rgba(52,199,89,0.16)'
-                : isLight
-                  ? 'rgba(255, 244, 223, 0.92)'
-                  : 'rgba(255,255,255,0.08)',
-              color: isProtected
-                ? isLight
-                  ? '#19713a'
-                  : '#7df2a1'
-                : theme.palette.text.primary,
-            }}
-          />
-          <Chip
-            label={`剩余流量 ${formatTraffic(remainingTraffic)}`}
-            size="small"
-            sx={{
-              borderRadius: 999,
-              backgroundColor: alpha('#34c759', 0.12),
-              color: isLight ? '#1f8d44' : '#7df2a1',
-              fontWeight: 800,
-            }}
-          />
-          <Chip
-            label={`到期时间 ${packageExpireAt}`}
-            size="small"
-            sx={{
-              borderRadius: 999,
-              backgroundColor: isLight
-                ? 'rgba(255,255,255,0.72)'
-                : 'rgba(255,255,255,0.08)',
-              color: theme.palette.text.primary,
-              fontWeight: 800,
-            }}
-          />
+      title="加速"
+      header={
+        <Stack direction="row" spacing={1.2} alignItems="center">
+          <Typography sx={{ fontSize: 14, color: '#de5548', fontWeight: 700 }}>
+            ↑ {formatTrafficSpeed(uploadSpeed)}
+          </Typography>
+          <Typography sx={{ fontSize: 14, color: '#2d9b46', fontWeight: 700 }}>
+            ↓ {formatTrafficSpeed(downloadSpeed)}
+          </Typography>
         </Stack>
-
-        <Box
-          sx={{
-            position: 'relative',
-            zIndex: 1,
-            display: 'grid',
-            gridTemplateColumns: lowResHome
-              ? '1fr'
-              : { xs: '1fr', md: 'minmax(280px, 0.92fr) minmax(0, 1.08fr)' },
-            gridTemplateRows: lowResHome ? 'auto minmax(300px, 1fr)' : undefined,
-            alignItems: lowResHome ? 'start' : 'stretch',
-            gap: ui.pageGap,
-            minHeight: 0,
-            flex: 1,
-          }}
-        >
-          <Box
-            sx={{
-              minHeight: lowResHome ? 'auto' : 0,
-              borderRadius: 4,
-              p: ui.cardPadding,
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: lowResHome ? 'flex-start' : 'center',
-              textAlign: 'center',
-              gap: ui.sectionGap,
-              background: isLight
-                ? 'linear-gradient(180deg, rgba(255,255,255,0.88), rgba(255,249,239,0.78))'
-                : 'linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03))',
-              border: isLight
-                ? '1px solid rgba(31,24,16,0.08)'
-                : '1px solid rgba(255,255,255,0.08)',
-            }}
-          >
+      }
+      full
+      contentStyle={{ height: '100%', minHeight: 0, display: 'flex' }}
+    >
+      <Box sx={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: '1fr 170px', gap: 1.2 }}>
+        <Box sx={{ background: '#f3f6fb', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <Box sx={{ flex: 1, m: 1.2, background: '#ffffff', display: 'grid', gridTemplateRows: 'auto auto auto 1fr auto auto', px: 2.8, py: 2.1, position: 'relative', overflow: 'hidden' }}>
             <Box
               sx={{
-                width: '100%',
-                borderRadius: 3.5,
-                px: ui.cardPadding,
-                py: tinyHome ? 0.5 : compactHome ? 0.6 : 0.72,
-                mb: 0,
-                mt: lowResHome ? 0 : compactHome ? -0.45 : -0.3,
-                textAlign: 'left',
-                background: isLight
-                  ? 'linear-gradient(135deg, rgba(255,255,255,0.54), rgba(255,247,233,0.42))'
-                  : 'linear-gradient(135deg, rgba(255,255,255,0.04), rgba(255,159,28,0.05))',
-                border: isLight
-                  ? '1px solid rgba(31,24,16,0.05)'
-                  : '1px solid rgba(255,255,255,0.05)',
-                backdropFilter: 'blur(8px)',
+                alignSelf: 'center',
+                mb: 1.4,
+                px: 0,
+                py: 0,
+                minWidth: 270,
               }}
             >
-              <Stack
-                direction="row"
-                alignItems="center"
-                justifyContent="space-between"
-                spacing={0.8}
-                sx={{ px: compactHome ? 0.15 : 0.2 }}
-              >
-                <Typography
-                  sx={{
-                    fontSize: ui.metaSize,
-                    color: 'text.secondary',
-                    fontWeight: 700,
-                    letterSpacing: 0.2,
-                  }}
-                >
-                  当前外网 IP
+              <Stack direction="row" spacing={0.8} alignItems="center" justifyContent="center">
+                <RouteFlag countryCode={publicIpInfo?.country_code || ''} size={20} />
+                <Typography sx={{ fontSize: 14, fontWeight: 700, color: '#263247', lineHeight: 1 }}>
+                  {isCheckingPublicIp && !publicIpInfo?.ip ? '\u68c0\u6d4b\u4e2d...' : publicIpInfo?.ip || '--'}
                 </Typography>
-                <IconButton
-                  size="small"
-                  onClick={() => void refreshPublicIp()}
-                  sx={{ color: 'text.secondary', p: 0.3, mr: -0.15 }}
-                >
-                  {isCheckingPublicIp ? (
-                    <CircularProgress size={14} sx={{ color: 'inherit' }} />
-                  ) : (
-                    <RefreshRounded sx={{ fontSize: 16 }} />
-                  )}
+                <IconButton size="small" onClick={() => void refreshPublicIp()} sx={{ p: 0.15, ml: 0.35 }}>
+                  {isCheckingPublicIp ? <CircularProgress size={12} /> : <RefreshRounded sx={{ fontSize: 14 }} />}
                 </IconButton>
               </Stack>
-              <Typography
-                sx={{
-                  mt: 0.1,
-                  fontSize: tinyHome ? 13 : compactHome ? 14 : 16,
-                  fontWeight: 900,
-                  lineHeight: 1.15,
-                  wordBreak: 'break-all',
-                }}
-              >
-                {isCheckingPublicIp && !publicIpInfo?.ip
-                  ? '检测中...'
-                  : publicIpInfo?.ip || '--'}
-              </Typography>
-              <Typography
-                sx={{
-                  mt: 0.1,
-                  fontSize: ui.metaSize,
-                  color: 'text.secondary',
-                  lineHeight: 1.4,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {[publicIpInfo?.country, publicIpInfo?.region, publicIpInfo?.city]
-                  .filter(Boolean)
-                  .join(' / ') || publicIpInfo?.organization || publicIpSummary}
-              </Typography>
             </Box>
 
-            <Tooltip
-              title={
-                verge?.enable_tun_mode
-                  ? '打开设置'
-                  : isProtected
-                    ? '断开代理'
-                    : '使用当前线路连接'
-              }
-              arrow
-            >
-              <IconButton
-                onClick={() => void onToggleProtection()}
-                disabled={isTogglingProtection}
+            <Box sx={{ justifySelf: 'center', display: 'inline-flex', alignItems: 'center', gap: 0.8, pb: 2.1, borderBottom: '1px dashed rgba(19, 31, 53, 0.12)' }}>
+              {[{ key: 'rule' as const, label: '\u667a\u80fd\u4ee3\u7406' }, { key: 'global' as const, label: '\u5168\u5c40\u4ee3\u7406' }].map((mode) => (
+                <Box key={mode.key} onClick={() => void onChangeClashMode(mode.key)} sx={{ minWidth: 86, px: 1.8, py: 0.75, textAlign: 'center', fontSize: 14, fontWeight: 700, cursor: 'pointer', border: '1px solid rgba(19, 31, 53, 0.16)', background: currentMode === mode.key ? '#2688ea' : '#ffffff', color: currentMode === mode.key ? '#ffffff' : '#394559' }}>
+                  {mode.label}
+                </Box>
+              ))}
+              <Box
+                onClick={() => void onToggleTunMode()}
                 sx={{
-                  width: tinyHome ? 68 : compactHome ? 80 : denseHome ? 90 : 104,
-                  height: tinyHome ? 68 : compactHome ? 80 : denseHome ? 90 : 104,
-                  border: isLight
-                    ? '1px solid rgba(255,159,28,0.18)'
-                    : '1px solid rgba(255,255,255,0.12)',
-                  background: isProtected
-                    ? 'linear-gradient(135deg, rgba(52,199,89,0.28), rgba(255,159,28,0.22))'
-                    : isLight
-                      ? 'rgba(255,255,255,0.82)'
-                      : 'rgba(255,255,255,0.08)',
-                  boxShadow: isProtected
-                    ? '0 24px 48px rgba(52,199,89,0.18)'
-                    : isLight
-                      ? '0 18px 36px rgba(20,16,10,0.12)'
-                      : '0 18px 36px rgba(0,0,0,0.18)',
-                  color: isProtected
-                    ? isLight
-                      ? '#19713a'
-                      : '#7df2a1'
-                    : theme.palette.text.primary,
+                  minWidth: 86,
+                  px: 1.8,
+                  py: 0.75,
+                  textAlign: 'center',
+                  fontSize: 14,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  border: '1px solid rgba(19, 31, 53, 0.16)',
+                  background: verge?.enable_tun_mode ? '#2688ea' : '#ffffff',
+                  color: verge?.enable_tun_mode ? '#ffffff' : '#394559',
                 }}
               >
-                {isTogglingProtection ? (
-                  <CircularProgress
-                    size={tinyHome ? 24 : compactHome ? 32 : denseHome ? 36 : 40}
-                    sx={{
-                      color: isProtected
-                        ? isLight
-                          ? '#19713a'
-                          : '#7df2a1'
-                        : theme.palette.text.primary,
-                    }}
-                  />
-                ) : (
-                  <PowerSettingsNewRounded
-                    sx={{ fontSize: tinyHome ? 32 : compactHome ? 42 : denseHome ? 48 : 54 }}
-                  />
-                )}
-              </IconButton>
-            </Tooltip>
-
-            <Stack
-              direction="row"
-              spacing={tinyHome ? 0.7 : 1}
-              useFlexGap
-              flexWrap="wrap"
-              sx={{
-                mt: 0,
-                justifyContent: 'center',
-              }}
-            >
-              {[
-                { key: 'rule' as const, label: '规则模式' },
-                { key: 'global' as const, label: '全局模式' },
-                { key: 'tun' as const, label: '虚拟网卡' },
-              ].map((mode) => {
-                const label =
-                  mode.key === 'tun' && isInstallingTunService ? '安装中' : mode.label
-                const selected =
-                  mode.key === 'tun'
-                    ? Boolean(verge?.enable_tun_mode)
-                    : currentMode === mode.key
-                const disabled =
-                  mode.key === 'tun' ? isInstallingTunService : false
-                return (
-                  <Box
-                    key={mode.key}
-                    onClick={() => {
-                      if (disabled) return
-                      if (mode.key === 'tun') {
-                        void onToggleTunMode()
-                        return
-                      }
-                      void onChangeClashMode(mode.key)
-                    }}
-                    sx={{
-                      px: tinyHome ? 1.05 : compactHome ? 1.3 : 1.6,
-                      py: tinyHome ? 0.6 : 0.75,
-                      borderRadius: 999,
-                      cursor: disabled ? 'not-allowed' : 'pointer',
-                      opacity: disabled ? 0.5 : 1,
-                      fontSize: tinyHome ? 11 : compactHome ? 12 : 13,
-                      fontWeight: 800,
-                      color: selected
-                        ? mode.key === 'tun'
-                          ? isLight
-                            ? '#134a28'
-                            : '#0f2217'
-                          : isLight
-                            ? '#1d1204'
-                            : '#0f0f12'
-                        : theme.palette.text.secondary,
-                      background: selected
-                        ? mode.key === 'tun'
-                          ? 'linear-gradient(135deg, #8ee59e, #34c759)'
-                          : 'linear-gradient(135deg, #ffb64d, #ff9f1c)'
-                        : isLight
-                          ? 'rgba(255,255,255,0.72)'
-                          : 'rgba(255,255,255,0.08)',
-                      border: selected
-                        ? mode.key === 'tun'
-                          ? '1px solid rgba(52,199,89,0.18)'
-                          : '1px solid rgba(255,159,28,0.16)'
-                        : isLight
-                          ? '1px solid rgba(31,24,16,0.08)'
-                          : '1px solid rgba(255,255,255,0.08)',
-                      boxShadow: selected
-                        ? mode.key === 'tun'
-                          ? '0 12px 24px rgba(52,199,89,0.18)'
-                          : '0 12px 24px rgba(255,159,28,0.2)'
-                        : 'none',
-                      transition: 'all 0.18s ease',
-                      userSelect: 'none',
-                    }}
-                  >
-                    {label}
+                {'\u865a\u62df\u7f51\u5361'}
+              </Box>
+              <Tooltip
+                title={
+                  <Box sx={{ maxWidth: 320, whiteSpace: 'pre-line', lineHeight: 1.7 }}>
+                    {'智能代理：自动选择更合适的代理方式或节点，尽量兼顾速度、稳定性和易用性。\n\n全局代理：所有网络流量都强制通过代理，适合需要全部流量都翻墙的场景。\n\n虚拟网卡模式：通过创建虚拟网卡接管系统流量，兼容性更强，适合系统代理无效时使用。'}
                   </Box>
-                )
-              })}
-            </Stack>
+                }
+              >
+                <Box sx={{ width: 24, height: 24, borderRadius: '50%', display: 'grid', placeItems: 'center', color: '#8a94a6', cursor: 'help' }}>
+                  <HelpOutlineRounded sx={{ fontSize: 18 }} />
+                </Box>
+              </Tooltip>
+            </Box>
 
-            <Typography
+            <Box ref={routePanelRef} sx={{ mt: 2.2, position: 'relative' }}>
+              <Stack direction="row" spacing={1.2} alignItems="center">
+                <Tooltip title="点击可以同步最新线路">
+                  <IconButton onClick={() => void onRefreshRoutes()} size="small" sx={{ width: 34, height: 34, border: '1px solid rgba(19, 31, 53, 0.14)', background: '#ffffff' }}>
+                    {isRefreshingRoutes ? <CircularProgress size={16} /> : <RefreshRounded sx={{ fontSize: 18 }} />}
+                  </IconButton>
+                </Tooltip>
+                <Box onClick={() => setRoutePanelOpen((value) => !value)} sx={{ flex: 1, height: 34, px: 1.2, display: 'flex', alignItems: 'center', gap: 1, border: '1px solid #5da1ec', background: '#ffffff', cursor: 'pointer' }}>
+                  {activeRoute?.name ? <RouteFlag countryCode={getRouteCountryCode(activeRoute.name)} size={22} /> : null}
+                  <Typography sx={{ flex: 1, minWidth: 0, fontSize: 14, color: activeRoute?.name ? '#314057' : '#a1aabc', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {activeRoute?.name || '选择你要使用的线路'}
+                  </Typography>
+                  {activeRoute?.name ? (
+                    <Typography sx={{ fontSize: 13, color: '#2d9b46', fontWeight: 700, flexShrink: 0 }}>
+                      {formatDelayLabel(activeRouteDelay)}
+                    </Typography>
+                  ) : null}
+                  <ArrowDropDownRounded sx={{ color: '#9aa5b8', ml: activeRoute?.name ? 0 : 'auto' }} />
+                </Box>
+                <Tooltip title="测试线路的连通性，请在“断开连接”状态下在进行测试">
+                  <IconButton onClick={() => void onRetestLatency()} size="small" sx={{ width: 34, height: 34, border: '1px solid rgba(19, 31, 53, 0.14)', background: '#ffffff' }}>
+                    {isRetestingLatency ? <CircularProgress size={16} /> : <BoltRounded sx={{ fontSize: 18 }} />}
+                  </IconButton>
+                </Tooltip>
+              </Stack>
+
+              {routePanelOpen && (
+                <Box sx={{ position: 'absolute', left: 46, right: 46, top: 40, zIndex: 2, maxHeight: 240, overflowY: 'auto', background: '#ffffff', border: '1px solid rgba(19, 31, 53, 0.12)', boxShadow: '0 14px 30px rgba(17, 24, 38, 0.10)' }}>
+                  {routeOptions.length ? (
+                    <Stack spacing={0}>
+                      {routeOptions.map((item) => {
+                        const selected = item.name === (activeRoute?.name || activeRouteName)
+                        return (
+                          <Box key={item.name} onClick={() => void onSelectRoute(item)} sx={{ px: 1.5, py: 1, display: 'flex', alignItems: 'center', gap: 1, cursor: 'pointer', background: selected ? '#f5f9ff' : '#ffffff', borderBottom: '1px solid rgba(19, 31, 53, 0.06)', '&:hover': { background: '#f5f9ff' } }}>
+                            <RouteFlag countryCode={getRouteCountryCode(item.name)} />
+                            <Typography sx={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: selected ? 700 : 500, color: '#263247', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {item.name}
+                            </Typography>
+                            <Typography sx={{ fontSize: 13, color: '#2d9b46', fontWeight: 700 }}>
+                              {formatDelayLabel(item.delay)}
+                            </Typography>
+                          </Box>
+                        )
+                      })}
+                    </Stack>
+                  ) : (
+                    <Box sx={{ py: 4, textAlign: 'center', color: '#b4bcc9', fontSize: 14 }}>No Data</Box>
+                  )}
+                </Box>
+              )}
+            </Box>
+
+            <Box
               sx={{
-                mt: 0,
-                color: 'text.secondary',
-                fontSize: ui.bodySize,
+                position: 'relative',
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'flex-start',
+                minHeight: 204,
+                mt: 0.7,
               }}
             >
-              当前线路
-            </Typography>
-            <Typography
-              sx={{
-                mt: 0.35,
-                fontSize: tinyHome ? 16 : compactHome ? 18 : denseHome ? 20 : 24,
-                lineHeight: 1.18,
-                fontWeight: 900,
-                display: '-webkit-box',
-                WebkitLineClamp: tinyHome ? 2 : 3,
-                WebkitBoxOrient: 'vertical',
-                overflow: 'hidden',
-                wordBreak: 'break-word',
-              }}
-            >
-              {activeRoute?.name || activeRouteName || currentNode}
-            </Typography>
-            <Typography
-              sx={{
-                mt: 0.15,
-                color: 'text.secondary',
-                fontSize: ui.bodySize,
-                lineHeight: 1.55,
-                display: '-webkit-box',
-                WebkitLineClamp: tinyHome ? 2 : 3,
-                WebkitBoxOrient: 'vertical',
-                overflow: 'hidden',
-              }}
-            >
-              {verge?.enable_tun_mode
-                ? '当前已启用 TUN 模式，请前往设置页管理高级流量转发。'
-                : isProtected
-                  ? `系统代理已开启${systemProxyAddress ? `，${systemProxyAddress}` : ''}`
-                  : '点击电源开关即可连接。'}
-            </Typography>
-            <Stack
-              direction={tinyHome ? 'column' : 'row'}
-              spacing={tinyHome ? 0.7 : 1}
-              sx={{ mt: 0, width: '100%', justifyContent: 'center' }}
-            >
-              {[
-                { label: '上行速率', value: uploadSpeed },
-                { label: '下行速率', value: downloadSpeed },
-              ].map((item) => (
+              <Box sx={{ position: 'relative', width: 360, height: 220 }}>
                 <Box
-                  key={item.label}
+                  component="svg"
+                  viewBox="0 0 360 220"
+                  sx={{ width: '100%', height: '100%', overflow: 'visible' }}
+                >
+                  <path
+                    d={describeArc(180, 166, 112, -120, -60)}
+                    fill="none"
+                    stroke="#4f5ea6"
+                    strokeWidth="15"
+                    strokeLinecap="butt"
+                  />
+                  <path
+                    d={describeArc(180, 166, 112, -60, 0)}
+                    fill="none"
+                    stroke="#39a6eb"
+                    strokeWidth="15"
+                    strokeLinecap="butt"
+                  />
+                  <path
+                    d={describeArc(180, 166, 112, 0, 60)}
+                    fill="none"
+                    stroke="#41d478"
+                    strokeWidth="15"
+                    strokeLinecap="butt"
+                  />
+                  <path
+                    d={describeArc(180, 166, 112, 60, 120)}
+                    fill="none"
+                    stroke="#b9ebf4"
+                    strokeWidth="15"
+                    strokeLinecap="butt"
+                  />
+
+                  {gaugeTicks.map((tick) => {
+                    const outer = polarToCartesian(180, 166, 118, tick.angle)
+                    const inner = polarToCartesian(
+                      180,
+                      166,
+                      tick.major ? 108 : 112,
+                      tick.angle,
+                    )
+
+                    return (
+                      <line
+                        key={tick.angle}
+                        x1={outer.x}
+                        y1={outer.y}
+                        x2={inner.x}
+                        y2={inner.y}
+                        stroke={tick.major ? '#8f97a4' : '#d5dbe4'}
+                        strokeWidth={tick.major ? 1.6 : 1}
+                        strokeLinecap="round"
+                      />
+                    )
+                  })}
+
+                  {[
+                    { label: '0', angle: -120, radius: 94 },
+                    { label: '25', angle: -60, radius: 90 },
+                    { label: '50', angle: 0, radius: 82 },
+                    { label: '75', angle: 60, radius: 90 },
+                    { label: '100', angle: 120, radius: 94 },
+                  ].map((mark) => {
+                    const point = polarToCartesian(180, 166, mark.radius, mark.angle)
+                    return (
+                      <text
+                        key={mark.label}
+                        x={point.x}
+                        y={point.y}
+                        textAnchor="middle"
+                        dominantBaseline="middle"
+                        fontSize="12"
+                        fontWeight="500"
+                        fill="#7f8794"
+                      >
+                        {mark.label}
+                      </text>
+                    )
+                  })}
+
+                  <line
+                    x1="180"
+                    y1="166"
+                    x2={polarToCartesian(180, 166, 72, gaugeProgressAngle).x}
+                    y2={polarToCartesian(180, 166, 72, gaugeProgressAngle).y}
+                    stroke="#c0c4ca"
+                    strokeWidth="5.5"
+                    strokeLinecap="round"
+                  />
+                  <circle cx="180" cy="166" r="14" fill="#edf0f3" />
+                  <circle cx="180" cy="166" r="4" fill="#4f5560" />
+                </Box>
+
+                <Box
                   sx={{
-                    minWidth: 0,
-                    flex: 1,
-                    maxWidth: 160,
-                    borderRadius: 2.5,
-                    px: tinyHome ? 0.95 : compactHome ? 1 : 1.1,
-                    py: tinyHome ? 0.7 : 0.85,
-                    textAlign: 'center',
-                    background: isLight
-                      ? 'rgba(255,255,255,0.9)'
-                      : 'rgba(255,255,255,0.06)',
-                    border: isLight
-                      ? '1px solid rgba(31,24,16,0.08)'
-                      : '1px solid rgba(255,255,255,0.08)',
+                    position: 'absolute',
+                    left: '50%',
+                    bottom: 6,
+                    transform: 'translateX(-50%)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: 0,
                   }}
                 >
                   <Typography
                     sx={{
-                      fontSize: ui.metaSize,
-                      color: 'text.secondary',
-                      fontWeight: 700,
+                      display: 'none',
                     }}
                   >
-                    {item.label}
+                    剩余流量 {remainingTrafficPercent}%
                   </Typography>
                   <Typography
                     sx={{
-                      mt: 0.25,
-                      fontSize: ui.bodySize,
-                      fontWeight: 900,
-                      lineHeight: 1.2,
+                      fontSize: 18,
+                      fontWeight: 500,
+                      color: '#a1a4aa',
+                      lineHeight: 1,
                     }}
                   >
-                    {formatTrafficSpeed(item.value)}
+                    {remainingTrafficDisplay}
                   </Typography>
                 </Box>
-              ))}
-            </Stack>
-          </Box>
-
-          <Box
-            sx={{
-              minHeight: 0,
-              display: 'flex',
-              flexDirection: 'column',
-              overflow: 'hidden',
-              borderRadius: 4,
-              p: ui.cardPadding,
-              background: isLight
-                ? 'linear-gradient(180deg, rgba(255,255,255,0.88), rgba(255,249,239,0.76))'
-                : 'linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.03))',
-              border: isLight
-                ? '1px solid rgba(31,24,16,0.08)'
-                : '1px solid rgba(255,255,255,0.08)',
-            }}
-          >
-            <Stack
-              direction={lowResHome ? 'column' : 'row'}
-              alignItems={lowResHome ? 'flex-start' : 'center'}
-              justifyContent="space-between"
-              spacing={lowResHome ? 0.4 : 0}
-              sx={{ mb: ui.sectionGap }}
-            >
-              <Typography sx={{ fontSize: ui.titleSize, fontWeight: 900 }}>
-                线路选择
-              </Typography>
-              <Typography sx={{ color: 'text.secondary', fontSize: ui.metaSize }}>
-                共 {routeOptions.length} 条
-              </Typography>
-            </Stack>
-
-            <Stack
-              direction="row"
-              spacing={tinyHome ? 0.7 : 1}
-              useFlexGap
-              flexWrap="wrap"
-              sx={{
-                justifyContent: lowResHome ? 'flex-start' : 'flex-end',
-                mb: ui.sectionGap,
-              }}
-            >
-              <Chip
-                icon={
-                  isRefreshingRoutes ? (
-                    <CircularProgress size={14} sx={{ color: 'inherit !important' }} />
-                  ) : (
-                    <RefreshRounded />
-                  )
-                }
-                label={isRefreshingRoutes ? '获取中' : '重新获取线路'}
-                size="small"
-                onClick={() => void onRefreshRoutes()}
-                sx={{
-                  height: ui.chipHeight + 2,
-                  borderRadius: 999,
-                  fontWeight: 800,
-                  cursor: isRefreshingRoutes ? 'default' : 'pointer',
-                  backgroundColor: isLight
-                    ? 'rgba(255,255,255,0.92)'
-                    : 'rgba(255,255,255,0.08)',
-                  color: theme.palette.text.primary,
-                  border: isLight
-                    ? '1px solid rgba(31,24,16,0.08)'
-                    : '1px solid rgba(255,255,255,0.08)',
-                  '& .MuiChip-icon': {
-                    color: 'inherit',
-                  },
-                }}
-              />
-              <Chip
-                icon={
-                  isRetestingLatency ? (
-                    <CircularProgress size={14} sx={{ color: 'inherit !important' }} />
-                  ) : (
-                    <RefreshRounded />
-                  )
-                }
-                label={isRetestingLatency ? '测速中' : '手动测速'}
-                size="small"
-                onClick={() => void onRetestLatency()}
-                sx={{
-                  height: ui.chipHeight + 2,
-                  borderRadius: 999,
-                  fontWeight: 800,
-                  cursor: isRetestingLatency ? 'default' : 'pointer',
-                  backgroundColor: isLight
-                    ? 'rgba(255,255,255,0.92)'
-                    : 'rgba(255,255,255,0.08)',
-                  color: theme.palette.text.primary,
-                  border: isLight
-                    ? '1px solid rgba(31,24,16,0.08)'
-                    : '1px solid rgba(255,255,255,0.08)',
-                  '& .MuiChip-icon': {
-                    color: 'inherit',
-                  },
-                }}
-              />
-            </Stack>
-
-            <Box
-              sx={{
-                flex: 1,
-                height: 0,
-                minHeight: 0,
-                overflowY: 'auto',
-                pr: 0.5,
-                mr: -0.5,
-                '&::-webkit-scrollbar': {
-                  width: 8,
-                },
-                '&::-webkit-scrollbar-thumb': {
-                  borderRadius: 999,
-                  backgroundColor: isLight
-                    ? 'rgba(31,24,16,0.18)'
-                    : 'rgba(255,255,255,0.18)',
-                },
-                '&::-webkit-scrollbar-track': {
-                  backgroundColor: 'transparent',
-                },
-              }}
-            >
-              <Stack spacing={0.85}>
-                {routeOptions.map((item) => {
-                  const selected = item.name === (activeRoute?.name || activeRouteName)
-                  const countryCode = getRouteCountryCode(item.name)
-                  const delayTone = getDelayTone(item.delay)
-                  const delayLabel = formatDelayLabel(item.delay)
-
-                  return (
-                    <Box
-                      key={item.name}
-                      onClick={() => void onSelectRoute(item)}
-                      sx={{
-                        borderRadius: 3,
-                        px: ui.routeItemPaddingX,
-                        py: ui.routeItemPaddingY,
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: tinyHome ? 0.8 : 1,
-                        cursor: 'pointer',
-                        transition: 'all 0.18s ease',
-                        background: selected
-                          ? isLight
-                            ? 'linear-gradient(135deg, rgba(255,236,199,0.96), rgba(255,244,223,0.92))'
-                            : 'linear-gradient(135deg, rgba(255,159,28,0.18), rgba(255,255,255,0.08))'
-                          : isLight
-                            ? 'rgba(255,255,255,0.86)'
-                            : 'rgba(255,255,255,0.05)',
-                        border: selected
-                          ? '1px solid rgba(255,159,28,0.38)'
-                          : isLight
-                            ? '1px solid rgba(31,24,16,0.08)'
-                            : '1px solid rgba(255,255,255,0.06)',
-                        boxShadow: selected
-                          ? '0 14px 28px rgba(255,159,28,0.12)'
-                          : 'none',
-                      }}
-                    >
-                      <RouteFlag
-                        countryCode={countryCode}
-                        compact={compactHome}
-                        isLight={isLight}
-                      />
-
-                      <Box sx={{ minWidth: 0, flex: 1 }}>
-                        <Typography
-                          sx={{
-                            fontSize: ui.bodySize,
-                            fontWeight: selected ? 900 : 800,
-                            lineHeight: 1.25,
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
-                          {item.name}
-                        </Typography>
-                      </Box>
-
-                      <Chip
-                        label={delayLabel}
-                        size="small"
-                        sx={{
-                          flexShrink: 0,
-                          borderRadius: 999,
-                          fontWeight: 800,
-                          color:
-                            delayTone === 'good'
-                              ? isLight
-                                ? '#1f8d44'
-                                : '#7df2a1'
-                              : delayTone === 'medium'
-                                ? '#7f5600'
-                                : theme.palette.text.secondary,
-                          backgroundColor:
-                            delayTone === 'good'
-                              ? alpha('#34c759', 0.14)
-                              : delayTone === 'medium'
-                                ? alpha('#ff9f1c', 0.16)
-                                : isLight
-                                  ? 'rgba(31,24,16,0.06)'
-                                  : 'rgba(255,255,255,0.08)',
-                        }}
-                      />
-                    </Box>
-                  )
-                })}
-              </Stack>
+              </Box>
             </Box>
+
+            <Button variant="contained" onClick={() => void onToggleProtection()} disabled={isTogglingProtection} startIcon={<PowerSettingsNewRounded />} sx={{ justifySelf: 'center', mt: -0.6, minWidth: 234, height: 36, borderRadius: 999, background: '#2688ea', boxShadow: 'none', fontWeight: 700, color: '#ffffff', '&:hover': { background: '#2688ea' } }}>
+              {isTogglingProtection ? '处理中...' : isProtected ? '断开连接' : '启动连接'}
+            </Button>
+
+          </Box>
+        </Box>
+
+        <Box sx={{ background: '#f7f8fc', px: 2.2, py: 2.1, display: 'flex', flexDirection: 'column', gap: 2.2 }}>
+          {[{ label: '账户余额', value: formatCurrency(user?.balance) }, { label: '会员等级', value: packageLevel }, { label: '等级过期', value: packageExpireAt }].map((item) => (
+            <Box key={item.label}>
+              <Typography sx={{ fontSize: 13, color: '#8c97a9' }}>{item.label}</Typography>
+              <Typography sx={{ mt: 0.6, fontSize: 15, fontWeight: 700, color: '#3b67de' }}>{item.value}</Typography>
+            </Box>
+          ))}
+
+          <Box sx={{ flex: 1, minHeight: 0 }} />
+
+          <Box sx={{ pt: 2.8, borderTop: '1px dashed rgba(19, 31, 53, 0.12)' }}>
+              <Stack spacing={3}>
+                <Button variant="contained" onClick={() => void openRechargePage()} sx={{ height: 34, borderRadius: 0, fontWeight: 700, background: '#5b62d6', boxShadow: 'none', color: '#ffffff', '&:hover': { background: '#5b62d6' } }}>{'\u4f59\u989d\u5145\u503c'}</Button>
+                <Button variant="contained" onClick={() => void openPurchasePage()} sx={{ height: 34, borderRadius: 0, fontWeight: 700, background: '#5b62d6', boxShadow: 'none', color: '#ffffff', '&:hover': { background: '#5b62d6' } }}>{'\u8d2d\u4e70\u5957\u9910'}</Button>
+                <Button variant="contained" onClick={() => void openSupportPage()} sx={{ height: 34, borderRadius: 0, fontWeight: 700, background: '#5b62d6', boxShadow: 'none', color: '#ffffff', '&:hover': { background: '#5b62d6' } }}>{'\u8054\u7cfb\u5ba2\u670d'}</Button>
+                <Button variant="contained" onClick={() => void openInvitePage()} sx={{ height: 34, borderRadius: 0, fontWeight: 700, background: '#f4a120', boxShadow: 'none', color: '#ffffff', '&:hover': { background: '#f4a120' } }}>{'\u9080\u8bf7\u8fd4\u5229'}</Button>
+              </Stack>
           </Box>
         </Box>
       </Box>

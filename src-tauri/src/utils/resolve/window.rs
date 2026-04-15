@@ -2,52 +2,35 @@ use dark_light::{Mode as SystemTheme, detect as detect_system_theme};
 use tauri::utils::config::Color;
 use tauri::{LogicalSize, Size, Theme, WebviewWindow};
 
-use crate::{config::Config, core::handle, utils::resolve::window_script::build_window_initial_script};
+use crate::{
+    config::Config,
+    core::handle,
+    utils::resolve::window_script::build_window_initial_script,
+};
 use clash_verge_logging::{Type, logging_error};
 
-const DARK_BACKGROUND_COLOR: Color = Color(46, 48, 61, 255); // #2E303D
-const LIGHT_BACKGROUND_COLOR: Color = Color(245, 245, 245, 255); // #F5F5F5
+const DARK_BACKGROUND_COLOR: Color = Color(46, 48, 61, 255);
+const LIGHT_BACKGROUND_COLOR: Color = Color(245, 245, 245, 255);
 const DARK_BACKGROUND_HEX: &str = "#2E303D";
 const LIGHT_BACKGROUND_HEX: &str = "#F5F5F5";
 
-// 定义默认窗口尺寸常量
-const DEFAULT_WIDTH: f64 = 940.0;
-const DEFAULT_HEIGHT: f64 = 700.0;
-
-const MINIMAL_WIDTH: f64 = 520.0;
-const MINIMAL_HEIGHT: f64 = 520.0;
-const STARTUP_WIDTH_RATIO: f64 = 0.6;
-const STARTUP_HEIGHT_RATIO: f64 = 0.6;
+const DEFAULT_WIDTH: f64 = 800.0;
+const DEFAULT_HEIGHT: f64 = 580.0;
 
 #[cfg(target_os = "linux")]
 const DEFAULT_DECORATIONS: bool = false;
 #[cfg(not(target_os = "linux"))]
 const DEFAULT_DECORATIONS: bool = true;
 
-fn resolve_startup_window_size(window: &WebviewWindow) -> tauri::Result<Option<LogicalSize<f64>>> {
-    let Some(monitor) = window.current_monitor()? else {
-        return Ok(None);
-    };
-
-    let logical_monitor_size = monitor.size().to_logical::<f64>(monitor.scale_factor());
-    let width = (logical_monitor_size.width * STARTUP_WIDTH_RATIO)
-        .clamp(MINIMAL_WIDTH, logical_monitor_size.width.max(MINIMAL_WIDTH));
-    let height = (logical_monitor_size.height * STARTUP_HEIGHT_RATIO)
-        .clamp(MINIMAL_HEIGHT, logical_monitor_size.height.max(MINIMAL_HEIGHT));
-
-    Ok(Some(LogicalSize::new(width, height)))
-}
-
-pub fn apply_adaptive_startup_window_size(window: &WebviewWindow) -> tauri::Result<()> {
-    if let Some(size) = resolve_startup_window_size(window)? {
-        window.set_size(Size::Logical(size))?;
-        window.center()?;
-    }
-
+pub fn apply_fixed_startup_window_size(window: &WebviewWindow) -> tauri::Result<()> {
+    let fixed_size = Size::Logical(LogicalSize::new(DEFAULT_WIDTH, DEFAULT_HEIGHT));
+    window.set_size(fixed_size.clone())?;
+    window.set_min_size(Some(fixed_size.clone()))?;
+    window.set_max_size(Some(fixed_size))?;
+    window.center()?;
     Ok(())
 }
 
-/// 构建新的 WebView 窗口
 pub async fn build_new_window() -> Result<WebviewWindow, String> {
     let app_handle = handle::Handle::app_handle();
 
@@ -78,11 +61,12 @@ pub async fn build_new_window() -> Result<WebviewWindow, String> {
         LIGHT_BACKGROUND_COLOR
     };
 
-    let initial_script = build_window_initial_script(initial_theme_mode, DARK_BACKGROUND_HEX, LIGHT_BACKGROUND_HEX);
+    let initial_script =
+        build_window_initial_script(initial_theme_mode, DARK_BACKGROUND_HEX, LIGHT_BACKGROUND_HEX);
 
     let mut builder = tauri::WebviewWindowBuilder::new(
         app_handle,
-        "main", /* the unique window label */
+        "main",
         tauri::WebviewUrl::App(start_page.into()),
     )
     .title("Bluelayer 加速器")
@@ -90,9 +74,10 @@ pub async fn build_new_window() -> Result<WebviewWindow, String> {
     .decorations(DEFAULT_DECORATIONS)
     .fullscreen(false)
     .inner_size(DEFAULT_WIDTH, DEFAULT_HEIGHT)
-    .min_inner_size(MINIMAL_WIDTH, MINIMAL_HEIGHT)
+    .min_inner_size(DEFAULT_WIDTH, DEFAULT_HEIGHT)
+    .max_inner_size(DEFAULT_WIDTH, DEFAULT_HEIGHT)
     .resizable(false)
-    .visible(false) // 等待主题色准备好后再展示，避免启动色差
+    .visible(true)
     .initialization_script(&initial_script);
 
     if let Some(theme) = resolved_theme {
@@ -103,7 +88,7 @@ pub async fn build_new_window() -> Result<WebviewWindow, String> {
 
     match builder.build() {
         Ok(window) => {
-            logging_error!(Type::Window, apply_adaptive_startup_window_size(&window));
+            logging_error!(Type::Window, apply_fixed_startup_window_size(&window));
             logging_error!(Type::Window, window.set_resizable(false));
             logging_error!(Type::Window, window.set_background_color(Some(background_color)));
             Ok(window)

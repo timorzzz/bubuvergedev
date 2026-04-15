@@ -11,15 +11,17 @@ import Layout from './_layout'
 import HomePage from './home'
 import SettingsPage from './settings'
 
+const EmptyPage = () => null
+
 export const navItems = [
   {
-    label: '首页',
+    label: '加速',
     path: '/',
     icon: [<HomeRoundedIcon key="mui" />, <HomeSvg key="svg" />],
     Component: HomePage,
   },
   {
-    label: '账户',
+    label: '个人中心',
     path: '/account',
     icon: [
       <AccountCircleRoundedIcon key="mui" />,
@@ -50,6 +52,10 @@ export const router = createBrowserRouter([
       {
         path: '/proxies',
         element: <Navigate to="/" replace />,
+      },
+      {
+        path: '/logs',
+        Component: EmptyPage,
       },
     ],
   },

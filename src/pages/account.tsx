@@ -1,281 +1,317 @@
+import type { ReactNode } from 'react'
+
 import {
-  LogoutRounded,
-  ShoppingCartRounded,
-  SupportAgentRounded,
-  WorkspacePremiumRounded,
+  AccountBalanceWalletRounded,
+  ArticleRounded,
+  PowerSettingsNewRounded,
+  SecurityRounded,
+  SettingsEthernetRounded,
+  WifiRounded,
 } from '@mui/icons-material'
-import {
-  Box,
-  Button,
-  CircularProgress,
-  Chip,
-  Grid,
-  Stack,
-  Typography,
-  alpha,
-} from '@mui/material'
+import { CircularProgress, alpha, Box, Grid, Stack, Switch, Typography } from '@mui/material'
 import { useTheme } from '@mui/material/styles'
 import { useState } from 'react'
+import { useNavigate } from 'react-router'
 
+import brandLogo from '@/assets/image/bluelayer-logo.png'
 import { BasePage } from '@/components/base'
-import {
-  logoutBluelayer,
-  openPurchasePage,
-  openSupportPage,
-  useBluelayerState,
-} from '@/services/bluelayer'
+import { useVerge } from '@/hooks/use-verge'
+import { useAppData } from '@/providers/app-data-context'
+import { logoutBluelayer, useBluelayerState } from '@/services/bluelayer'
 
-const formatTraffic = (value?: number) => {
-  if (!value || value <= 0) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  let size = value
-  let index = 0
-  while (size >= 1024 && index < units.length - 1) {
-    size /= 1024
-    index += 1
-  }
-  return `${size.toFixed(index === 0 ? 0 : 2)} ${units[index]}`
+const formatCurrency = (value?: string | number | null) => {
+  const normalized =
+    typeof value === 'number' ? value : Number(value == null || value === '' ? 0 : value)
+  return `\u00A5 ${Number.isFinite(normalized) ? normalized.toFixed(2) : '0.00'}`
 }
 
 const AccountPage = () => {
   const theme = useTheme()
-  const isLight = theme.palette.mode === 'light'
+  const navigate = useNavigate()
   const { session } = useBluelayerState()
-  const [openingPanelKey, setOpeningPanelKey] = useState<
-    'renew' | 'shop' | 'support' | null
-  >(null)
+  const { clashConfig } = useAppData()
+  const { verge, patchVerge } = useVerge()
+  const [loggingOut, setLoggingOut] = useState(false)
 
   const user = session?.userInfo
-  const totalTraffic = user?.traffic?.total || 0
-  const usedTraffic = user?.traffic?.used || 0
-  const remainingTraffic = Math.max(totalTraffic - usedTraffic, 0)
+  const packageLevel = user?.class ? `VIP${user.class}\u4f1a\u5458` : '\u672a\u5f00\u901a\u5957\u9910'
+  const expiryText = user?.class_expire || '\u672a\u8bbe\u7f6e'
+  const balanceText = formatCurrency(user?.balance)
+  const autoLaunchEnabled = Boolean(verge?.enable_auto_launch)
+  const keepProxyEnabled = Boolean(verge?.enable_proxy_guard)
+  const httpPortText = verge?.verge_port
+    ? String(verge.verge_port)
+    : clashConfig?.port
+      ? String(clashConfig.port)
+      : '\u4e0d\u53ef\u7528'
+  const socksPortText = verge?.verge_socks_port
+    ? String(verge.verge_socks_port)
+    : clashConfig?.socksPort
+      ? String(clashConfig.socksPort)
+      : '\u4e0d\u53ef\u7528'
 
-  const surfaceStyle = {
-    background: isLight ? 'rgba(255, 250, 242, 0.9)' : 'rgba(255,255,255,0.04)',
-    border: isLight
-      ? '1px solid rgba(31,24,16,0.08)'
-      : '1px solid rgba(255,255,255,0.08)',
-    boxShadow: isLight
-      ? '0 24px 60px rgba(20,16,10,0.08)'
-      : '0 24px 60px rgba(0,0,0,0.18)',
+  const tileStyle = (lastColumn = false, secondRow = false) =>
+    ({
+      height: '100%',
+      minHeight: 102,
+      px: 2.05,
+      py: 1.45,
+      background: '#ffffff',
+      borderRight: lastColumn ? 'none' : '1px solid rgba(19, 31, 53, 0.08)',
+      borderTop: secondRow ? '1px solid rgba(19, 31, 53, 0.08)' : 'none',
+    }) as const
+
+  const renderIconBubble = (icon: ReactNode) => (
+    <Box
+      sx={{
+        width: 34,
+        height: 34,
+        borderRadius: '50%',
+        display: 'grid',
+        placeItems: 'center',
+        background: '#f3f8ff',
+        flexShrink: 0,
+        position: 'relative',
+        '&::before': {
+          content: '""',
+          position: 'absolute',
+          width: 15,
+          height: 15,
+          borderRadius: 2,
+          border: '2px solid #7db7ff',
+          transform: 'rotate(45deg)',
+        },
+      }}
+    >
+      <Box
+        sx={{
+          position: 'relative',
+          zIndex: 1,
+          color: '#ff8f75',
+          display: 'grid',
+          placeItems: 'center',
+        }}
+      >
+        {icon}
+      </Box>
+    </Box>
+  )
+
+  const switchSx = {
+    mr: 0.1,
+    '& .MuiSwitch-switchBase.Mui-checked': { color: '#ffffff' },
+    '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+      backgroundColor: '#b7bdc6',
+      opacity: 1,
+    },
+    '& .MuiSwitch-track': { backgroundColor: '#c8cdd5', opacity: 1 },
   } as const
 
-  const runPanelAction = async (
-    key: 'renew' | 'shop' | 'support',
-    action: () => Promise<void>,
-  ) => {
-    setOpeningPanelKey(key)
+  const handleLogout = async () => {
+    if (loggingOut) return
+    setLoggingOut(true)
     try {
-      await action()
+      await logoutBluelayer()
     } finally {
-      setOpeningPanelKey(null)
+      setLoggingOut(false)
     }
   }
 
   return (
-    <BasePage
-      title="账户"
-      header={<Box />}
-      full
-      contentStyle={{ height: '100%', minHeight: 0 }}
-    >
-      <Grid
-        container
-        spacing={2}
-        columns={{ xs: 12 }}
-        sx={{ height: '100%', minHeight: 0 }}
+    <BasePage title={'\u4e2a\u4eba\u4e2d\u5fc3'} header={<Box />} full contentStyle={{ height: '100%' }}>
+      <Box
+        sx={{
+          height: 'calc(100% - 12px)',
+          overflow: 'hidden',
+          background: '#ffffff',
+          border: '1px solid rgba(19, 31, 53, 0.08)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignSelf: 'stretch',
+        }}
       >
-        <Grid size={{ xs: 12, md: 7 }}>
+        <Box
+          sx={{
+            px: 3,
+            py: 1.7,
+            flex: '0 0 248px',
+            position: 'relative',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            textAlign: 'center',
+          }}
+        >
           <Box
+            onClick={() => void handleLogout()}
             sx={{
-              height: '100%',
-              borderRadius: 5,
-              p: 2.2,
+              position: 'absolute',
+              top: 16,
+              right: 22,
+              color: '#ff5c3a',
+              fontSize: 14,
+              cursor: loggingOut ? 'default' : 'pointer',
+              userSelect: 'none',
               display: 'flex',
-              flexDirection: 'column',
-              gap: 2,
-              ...surfaceStyle,
+              alignItems: 'center',
+              gap: 0.8,
+              opacity: loggingOut ? 0.72 : 1,
             }}
           >
-            <Stack spacing={1}>
-              <Typography sx={{ fontSize: 28, fontWeight: 900 }}>
-                账户与套餐
-              </Typography>
-            </Stack>
-
-            <Box
-              sx={{
-                borderRadius: 4,
-                p: 2,
-                background: isLight
-                  ? 'rgba(255,255,255,0.72)'
-                  : 'rgba(255,255,255,0.05)',
-                border: isLight
-                  ? '1px solid rgba(31,24,16,0.05)'
-                  : '1px solid rgba(255,255,255,0.06)',
-              }}
-            >
-              <Typography sx={{ color: 'text.secondary', fontSize: 13 }}>
-                当前账号
-              </Typography>
-              <Typography sx={{ mt: 0.5, fontSize: 24, fontWeight: 800 }}>
-                {user?.true_name || user?.username || '-'}
-              </Typography>
-              <Stack
-                direction="row"
-                spacing={1}
-                flexWrap="wrap"
-                useFlexGap
-                sx={{ mt: 1.5 }}
-              >
-                <Chip
-                  label={`套餐等级 Lv.${user?.class ?? 0}`}
-                  sx={{ borderRadius: 999, fontWeight: 700 }}
-                />
-                <Chip
-                  label={`到期时间 ${user?.class_expire || '未知'}`}
-                  sx={{ borderRadius: 999 }}
-                />
-              </Stack>
-            </Box>
-
-            <Grid container spacing={2} columns={{ xs: 12 }}>
-              <Grid size={{ xs: 12, sm: 4 }}>
-                <Box
-                  sx={{
-                    height: '100%',
-                    borderRadius: 4,
-                    p: 2,
-                    background: alpha('#ff9f1c', 0.1),
-                  }}
-                >
-                  <Typography sx={{ color: 'text.secondary', fontSize: 13 }}>
-                    总流量
-                  </Typography>
-                  <Typography sx={{ mt: 0.6, fontSize: 15, fontWeight: 800 }}>
-                    {formatTraffic(totalTraffic)}
-                  </Typography>
-                </Box>
-              </Grid>
-              <Grid size={{ xs: 12, sm: 4 }}>
-                <Box
-                  sx={{
-                    height: '100%',
-                    borderRadius: 4,
-                    p: 2,
-                    background: alpha(theme.palette.primary.main, 0.12),
-                  }}
-                >
-                  <Typography sx={{ color: 'text.secondary', fontSize: 13 }}>
-                    已用流量
-                  </Typography>
-                  <Typography sx={{ mt: 0.6, fontSize: 15, fontWeight: 800 }}>
-                    {formatTraffic(usedTraffic)}
-                  </Typography>
-                </Box>
-              </Grid>
-              <Grid size={{ xs: 12, sm: 4 }}>
-                <Box
-                  sx={{
-                    height: '100%',
-                    borderRadius: 4,
-                    p: 2,
-                    background: alpha('#34c759', 0.12),
-                  }}
-                >
-                  <Typography sx={{ color: 'text.secondary', fontSize: 13 }}>
-                    剩余流量
-                  </Typography>
-                  <Typography sx={{ mt: 0.6, fontSize: 15, fontWeight: 800 }}>
-                    {formatTraffic(remainingTraffic)}
-                  </Typography>
-                </Box>
-              </Grid>
-            </Grid>
+            {loggingOut && <CircularProgress size={14} sx={{ color: '#ff5c3a' }} />}
+            <Typography sx={{ fontSize: 14, color: 'inherit' }}>
+              {loggingOut ? '\u6b63\u5728\u9000\u51fa...' : '\u9000\u51fa\u767b\u5f55'}
+            </Typography>
           </Box>
-        </Grid>
 
-        <Grid size={{ xs: 12, md: 5 }}>
-          <Stack spacing={2} sx={{ height: '100%' }}>
+          <Box
+            sx={{
+              width: 86,
+              height: 86,
+              borderRadius: '50%',
+              display: 'grid',
+              placeItems: 'center',
+              background:
+                'radial-gradient(circle at 35% 30%, #a8d7ff, #73bbff 58%, #5b99ff 100%)',
+            }}
+          >
+            <Box component="img" src={brandLogo} alt="Bluelayer" sx={{ width: 54, height: 54 }} />
+          </Box>
+
+          <Typography sx={{ mt: 2.1, fontSize: 18, fontWeight: 500, color: '#1d2433' }}>
+            {user?.true_name || user?.username || '-'}
+          </Typography>
+          <Typography sx={{ mt: 0.7, fontSize: 15, color: '#8f98a8' }}>{packageLevel}</Typography>
+          <Typography sx={{ mt: 0.35, fontSize: 14, color: '#8f98a8' }}>{expiryText}</Typography>
+        </Box>
+
+        <Grid
+          container
+          columns={12}
+          sx={{
+            borderTop: '1px solid rgba(19, 31, 53, 0.08)',
+            flex: 1,
+            minHeight: 0,
+            gridAutoRows: '1fr',
+          }}
+        >
+          <Grid size={4}>
+            <Box sx={tileStyle(false, false)}>
+              <Stack direction="row" alignItems="center" spacing={1.1}>
+                {renderIconBubble(<WifiRounded sx={{ fontSize: 16 }} />)}
+                <Typography sx={{ fontSize: 15, color: '#1f2c44', fontWeight: 500 }}>
+                  {'http(s)\u7aef\u53e3'}
+                </Typography>
+              </Stack>
+              <Typography sx={{ mt: 2.1, pl: 5.15, fontSize: 15, fontWeight: 500, color: '#6f7685' }}>
+                {httpPortText}
+              </Typography>
+            </Box>
+          </Grid>
+
+          <Grid size={4}>
+            <Box sx={tileStyle(false, false)}>
+              <Stack direction="row" alignItems="center" spacing={1.1}>
+                {renderIconBubble(<SettingsEthernetRounded sx={{ fontSize: 16 }} />)}
+                <Typography sx={{ fontSize: 15, color: '#1f2c44', fontWeight: 500 }}>
+                  {'socks\u7aef\u53e3'}
+                </Typography>
+              </Stack>
+              <Typography sx={{ mt: 2.1, pl: 5.15, fontSize: 15, fontWeight: 500, color: '#6f7685' }}>
+                {socksPortText}
+              </Typography>
+            </Box>
+          </Grid>
+
+          <Grid size={4}>
+            <Box sx={tileStyle(true, false)}>
+              <Stack direction="row" alignItems="center" spacing={1.1}>
+                {renderIconBubble(<AccountBalanceWalletRounded sx={{ fontSize: 16 }} />)}
+                <Typography sx={{ fontSize: 15, color: '#1f2c44', fontWeight: 500 }}>
+                  {'\u8d26\u6237\u4f59\u989d'}
+                </Typography>
+              </Stack>
+              <Typography sx={{ mt: 2.1, pl: 5.15, fontSize: 15, fontWeight: 500, color: '#6f7685' }}>
+                {balanceText}
+              </Typography>
+            </Box>
+          </Grid>
+
+          <Grid size={4}>
+            <Box sx={tileStyle(false, true)}>
+              <Stack direction="row" alignItems="center" spacing={1.1}>
+                {renderIconBubble(<PowerSettingsNewRounded sx={{ fontSize: 16 }} />)}
+                <Typography sx={{ fontSize: 15, color: '#1f2c44', fontWeight: 500 }}>
+                  {'\u5f00\u673a\u81ea\u542f'}
+                </Typography>
+              </Stack>
+              <Box sx={{ mt: 2.05, pl: 4.1, display: 'flex', alignItems: 'center', gap: 0.2 }}>
+                <Switch
+                  size="small"
+                  checked={autoLaunchEnabled}
+                  onChange={() => void patchVerge({ enable_auto_launch: !autoLaunchEnabled })}
+                  sx={switchSx}
+                />
+                <Typography sx={{ fontSize: 15, color: '#7a8291' }}>
+                  {autoLaunchEnabled ? '\u5f00' : '\u5173'}
+                </Typography>
+              </Box>
+            </Box>
+          </Grid>
+
+          <Grid size={4}>
             <Box
               sx={{
-                borderRadius: 5,
-                p: 2.2,
-                ...surfaceStyle,
+                ...tileStyle(false, true),
+                cursor: 'pointer',
+                '&:hover': { background: alpha(theme.palette.primary.main, 0.03) },
               }}
+              onClick={() => navigate('/logs')}
             >
-              <Stack spacing={1.4}>
-                <Typography sx={{ fontSize: 24, fontWeight: 800 }}>
-                  套餐服务
+              <Stack direction="row" alignItems="center" spacing={1.1}>
+                {renderIconBubble(<ArticleRounded sx={{ fontSize: 16 }} />)}
+                <Typography sx={{ fontSize: 15, color: '#1f2c44', fontWeight: 500 }}>
+                  {'Log\u67e5\u770b'}
                 </Typography>
-                <Typography sx={{ color: 'text.secondary' }}>
-                  需要升级套餐、续费或联系人工支持时，都可以直接在这里处理。
-                </Typography>
-                {openingPanelKey ? (
-                  <Box
-                    sx={{
-                      borderRadius: 3,
-                      px: 1.4,
-                      py: 1.1,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 1,
-                      background: isLight
-                        ? 'rgba(255,255,255,0.8)'
-                        : 'rgba(255,255,255,0.06)',
-                      border: isLight
-                        ? '1px solid rgba(31,24,16,0.06)'
-                        : '1px solid rgba(255,255,255,0.08)',
-                    }}
-                  >
-                    <CircularProgress size={18} />
-                    <Typography sx={{ fontSize: 13, color: 'text.secondary' }}>
-                      正在打开面板并确认当前账户登录状态，请稍候...
-                    </Typography>
-                  </Box>
-                ) : null}
-                <Button
-                  variant="contained"
-                  startIcon={<WorkspacePremiumRounded />}
-                  onClick={() => void runPanelAction('renew', openPurchasePage)}
-                  disabled={Boolean(openingPanelKey)}
-                  sx={{ borderRadius: 999, py: 1.2, fontWeight: 800 }}
-                >
-                  升级或续费
-                </Button>
-                <Button
-                  variant="outlined"
-                  startIcon={<ShoppingCartRounded />}
-                  onClick={() => void runPanelAction('shop', openPurchasePage)}
-                  disabled={Boolean(openingPanelKey)}
-                  sx={{ borderRadius: 999, py: 1.2, fontWeight: 700 }}
-                >
-                  打开购买页面
-                </Button>
-                <Button
-                  variant="text"
-                  startIcon={<SupportAgentRounded />}
-                  onClick={() => void runPanelAction('support', openSupportPage)}
-                  disabled={Boolean(openingPanelKey)}
-                  sx={{ borderRadius: 999, py: 1.2, fontWeight: 700 }}
-                >
-                  联系客服
-                </Button>
-                <Button
-                  variant="text"
-                  color="inherit"
-                  startIcon={<LogoutRounded />}
-                  onClick={() => void logoutBluelayer()}
-                  disabled={Boolean(openingPanelKey)}
-                  sx={{ borderRadius: 999, py: 1.2, fontWeight: 700 }}
-                >
-                  退出登录
-                </Button>
               </Stack>
+              <Typography
+                sx={{
+                  mt: 2.1,
+                  pl: 5.15,
+                  fontSize: 15,
+                  fontWeight: 500,
+                  color: theme.palette.primary.main,
+                }}
+              >
+                {'\u70b9\u51fb\u67e5\u770b'}
+              </Typography>
             </Box>
-          </Stack>
+          </Grid>
+
+          <Grid size={4}>
+            <Box sx={tileStyle(true, true)}>
+              <Stack direction="row" alignItems="center" spacing={1.1}>
+                {renderIconBubble(<SecurityRounded sx={{ fontSize: 16 }} />)}
+                <Typography sx={{ fontSize: 15, color: '#1f2c44', fontWeight: 500 }}>
+                  {'\u4fdd\u6301\u4ee3\u7406'}
+                </Typography>
+              </Stack>
+              <Box sx={{ mt: 2.05, pl: 4.1, display: 'flex', alignItems: 'center', gap: 0.2 }}>
+                <Switch
+                  size="small"
+                  checked={keepProxyEnabled}
+                  onChange={() => void patchVerge({ enable_proxy_guard: !keepProxyEnabled })}
+                  sx={switchSx}
+                />
+                <Typography sx={{ fontSize: 15, color: '#7a8291' }}>
+                  {keepProxyEnabled ? '\u5f00' : '\u5173'}
+                </Typography>
+              </Box>
+            </Box>
+          </Grid>
         </Grid>
-      </Grid>
+      </Box>
     </BasePage>
   )
 }

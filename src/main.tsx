@@ -11,6 +11,7 @@ import { MihomoWebSocket } from 'tauri-plugin-mihomo-api'
 
 import { BaseErrorBoundary } from './components/base'
 import { router } from './pages/_routers'
+import { hideInitialOverlay } from './pages/_layout/utils'
 import { AppDataProvider } from './providers/app-data-provider'
 import { WindowProvider } from './providers/window'
 import { FALLBACK_LANGUAGE, initializeLanguage } from './services/i18n'
@@ -65,6 +66,10 @@ const initializeApp = (initialThemeMode: 'light' | 'dark') => {
       </ComposeContextProvider>
     </React.StrictMode>,
   )
+
+  window.setTimeout(() => {
+    hideInitialOverlay()
+  }, 120)
 }
 
 const bootstrap = async () => {
@@ -108,4 +113,7 @@ window.addEventListener('beforeunload', () => {
 window.addEventListener('DOMContentLoaded', () => {
   // Clean up all WebSocket instances to prevent memory leaks
   MihomoWebSocket.cleanupAll()
+  window.setTimeout(() => {
+    hideInitialOverlay()
+  }, 800)
 })

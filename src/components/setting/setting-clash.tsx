@@ -4,14 +4,10 @@ import { invoke } from '@tauri-apps/api/core'
 import { useLockFn } from 'ahooks'
 import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { updateGeo } from 'tauri-plugin-mihomo-api'
 
 import { DialogRef, Switch, TooltipIcon } from '@/components/base'
 import { useClash } from '@/hooks/use-clash'
 import { useVerge } from '@/hooks/use-verge'
-import { invoke_uwp_tool } from '@/services/cmds'
-import { showNotice } from '@/services/notice-service'
-import getSystem from '@/utils/get-system'
 
 import { ClashCoreViewer } from './mods/clash-core-viewer'
 import { ClashPortViewer } from './mods/clash-port-viewer'
@@ -19,9 +15,6 @@ import { DnsViewer } from './mods/dns-viewer'
 import { GuardState } from './mods/guard-state'
 import { NetworkInterfaceViewer } from './mods/network-interface-viewer'
 import { SettingItem, SettingList } from './mods/setting-comp'
-import { TunnelsViewer } from './mods/tunnels-viewer'
-
-const isWIN = getSystem() === 'windows'
 
 interface Props {
   onError: (err: Error) => void
@@ -33,15 +26,9 @@ const SettingClash = ({ onError }: Props) => {
   const { clash, version, mutateClash, patchClash } = useClash()
   const { verge, patchVerge } = useVerge()
 
-  const {
-    ipv6,
-    'allow-lan': allowLan,
-    'unified-delay': unifiedDelay,
-  } = clash ?? {}
-
+  const { ipv6, 'allow-lan': allowLan, 'unified-delay': unifiedDelay } = clash ?? {}
   const { verge_mixed_port } = verge ?? {}
 
-  // 独立跟踪DNS设置开关状态
   const [dnsSettingsEnabled, setDnsSettingsEnabled] = useState(() => {
     return verge?.enable_dns_settings ?? false
   })
@@ -50,22 +37,12 @@ const SettingClash = ({ onError }: Props) => {
   const coreRef = useRef<DialogRef>(null)
   const networkRef = useRef<DialogRef>(null)
   const dnsRef = useRef<DialogRef>(null)
-  const tunnelRef = useRef<DialogRef>(null)
 
   const onSwitchFormat = (_e: any, value: boolean) => value
   const onChangeData = (patch: Partial<IConfigData>) => {
     mutateClash((old) => ({ ...old!, ...patch }), false)
   }
-  const onUpdateGeo = async () => {
-    try {
-      await updateGeo()
-      showNotice.success('settings.feedback.notifications.clash.geoDataUpdated')
-    } catch (err: any) {
-      showNotice.error(err)
-    }
-  }
 
-  // 实现DNS设置开关处理函数
   const handleDnsToggle = useLockFn(async (enable: boolean) => {
     try {
       setDnsSettingsEnabled(enable)
@@ -76,8 +53,6 @@ const SettingClash = ({ onError }: Props) => {
       }, 500)
     } catch (err: any) {
       setDnsSettingsEnabled(!enable)
-      showNotice.error(err)
-      await patchVerge({ enable_dns_settings: !enable }).catch(() => {})
       throw err
     }
   })
@@ -88,13 +63,13 @@ const SettingClash = ({ onError }: Props) => {
       <ClashCoreViewer ref={coreRef} />
       <NetworkInterfaceViewer ref={networkRef} />
       <DnsViewer ref={dnsRef} />
-      <TunnelsViewer ref={tunnelRef} />
+
       <SettingItem
         label={t('settings.sections.clash.form.fields.allowLan')}
         extra={
           <TooltipIcon
             title={t('settings.sections.clash.form.tooltips.networkInterface')}
-            color={'inherit'}
+            color="inherit"
             icon={LanRounded}
             onClick={() => {
               networkRef.current?.open()
@@ -116,18 +91,9 @@ const SettingClash = ({ onError }: Props) => {
 
       <SettingItem
         label={t('settings.sections.clash.form.fields.dnsOverwrite')}
-        extra={
-          <TooltipIcon
-            icon={SettingsRounded}
-            onClick={() => dnsRef.current?.open()}
-          />
-        }
+        extra={<TooltipIcon icon={SettingsRounded} onClick={() => dnsRef.current?.open()} />}
       >
-        <Switch
-          edge="end"
-          checked={dnsSettingsEnabled}
-          onChange={(_, checked) => handleDnsToggle(checked)}
-        />
+        <Switch edge="end" checked={dnsSettingsEnabled} onChange={(_, checked) => handleDnsToggle(checked)} />
       </SettingItem>
 
       <SettingItem label={t('settings.sections.clash.form.fields.ipv6')}>
@@ -180,38 +146,10 @@ const SettingClash = ({ onError }: Props) => {
 
       <SettingItem
         label={t('settings.sections.clash.form.fields.clashCore')}
-        extra={
-          <TooltipIcon
-            icon={SettingsRounded}
-            onClick={() => coreRef.current?.open()}
-          />
-        }
+        extra={<TooltipIcon icon={SettingsRounded} onClick={() => coreRef.current?.open()} />}
       >
         <Typography sx={{ py: '7px', pr: 1 }}>{version}</Typography>
       </SettingItem>
-
-      {isWIN && (
-        <SettingItem
-          onClick={invoke_uwp_tool}
-          label={t('settings.sections.clash.form.fields.openUwpTool')}
-          extra={
-            <TooltipIcon
-              title={t('settings.sections.clash.form.tooltips.openUwpTool')}
-              sx={{ opacity: '0.7' }}
-            />
-          }
-        />
-      )}
-
-      <SettingItem
-        onClick={onUpdateGeo}
-        label={t('settings.sections.clash.form.fields.updateGeoData')}
-      />
-
-      <SettingItem
-        label={t('settings.sections.clash.form.fields.tunnels.title')}
-        onClick={() => tunnelRef.current?.open()}
-      />
     </SettingList>
   )
 }

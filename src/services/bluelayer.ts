@@ -1,12 +1,13 @@
-import { fetch } from '@tauri-apps/plugin-http'
-import { open } from '@tauri-apps/plugin-shell'
+﻿import { fetch } from '@tauri-apps/plugin-http'
 import { useSyncExternalStore } from 'react'
 import { version as appVersion } from '@root/package.json'
 
 import {
   calcuProxies,
   createProfile,
+  decryptLocalData,
   deleteProfile,
+  encryptLocalData,
   enhanceProfiles,
   getProfiles,
   openBluelayerPanelWindow,
@@ -28,6 +29,7 @@ const BLUELAYER_PROFILE_DESC = 'bluelayer-managed-profile'
 const BLUELAYER_SESSION_KEY = 'bluelayer_session_v1'
 const BLUELAYER_SESSION_MAX_AGE = 7 * 24 * 60 * 60 * 1000
 const BLUELAYER_SUBSCRIPTION_CACHE_KEY = 'bluelayer_subscription_cache_v1'
+const BLUELAYER_CREDENTIALS_KEY = 'bluelayer_credentials_v1'
 const BLUELAYER_SUBSCRIPTION_CACHE_TTL = 24 * 60 * 60 * 1000
 const V1_KEY = 'RocketMaker'
 
@@ -86,6 +88,11 @@ type ManagedSubscriptionCache = {
   fetchedAt: number
   baseUrl: string
   subscriptionUrl: string
+}
+
+type RememberedCredentials = {
+  username: string
+  password: string
 }
 
 type BluelayerState = {
@@ -162,6 +169,29 @@ function saveManagedSubscriptionCache(cache: ManagedSubscriptionCache | null) {
 
 function clearManagedSubscriptionCache() {
   saveManagedSubscriptionCache(null)
+}
+
+export async function getRememberedCredentials(): Promise<RememberedCredentials | null> {
+  try {
+    const raw = localStorage.getItem(BLUELAYER_CREDENTIALS_KEY)
+    if (!raw) return null
+    const decrypted = await decryptLocalData(raw)
+    return JSON.parse(decrypted) as RememberedCredentials
+  } catch {
+    localStorage.removeItem(BLUELAYER_CREDENTIALS_KEY)
+    return null
+  }
+}
+
+export async function saveRememberedCredentials(
+  credentials: RememberedCredentials | null,
+) {
+  if (!credentials) {
+    localStorage.removeItem(BLUELAYER_CREDENTIALS_KEY)
+    return
+  }
+  const encrypted = await encryptLocalData(JSON.stringify(credentials))
+  localStorage.setItem(BLUELAYER_CREDENTIALS_KEY, encrypted)
 }
 
 function normalizeBaseUrl(url: string) {
@@ -342,7 +372,7 @@ async function resolvePanel(panelIndex?: number) {
     }
   }
 
-  throw new Error('无法连接到可用面板')
+  throw new Error('\u65e0\u6cd5\u8fde\u63a5\u5230\u53ef\u7528\u9762\u677f')
 }
 
 async function v1Get(baseUrl: string, path: string, cookie?: string) {
@@ -410,7 +440,7 @@ async function fetchSubscriptionText(baseUrl: string, subscriptionUrl: string) {
   })
 
   if (!/proxy-groups:|proxies:/i.test(text)) {
-    throw new Error('订阅内容不完整')
+    throw new Error('\u8ba2\u9605\u5185\u5bb9\u4e0d\u5b8c\u6574')
   }
 
   return text
@@ -533,7 +563,7 @@ async function ensureManagedProfile(baseUrl: string, subscriptionUrl: string) {
   )
 
   if (!managed?.uid) {
-    throw new Error('创建 Bluelayer 订阅失败')
+    throw new Error('鍒涘缓 Bluelayer 璁㈤槄澶辫触')
   }
 
   await clearExtraManagedProfiles()
@@ -542,7 +572,7 @@ async function ensureManagedProfile(baseUrl: string, subscriptionUrl: string) {
 
   const proxyReady = await waitForProxyReady()
   if (!proxyReady) {
-    throw new Error('线路尚未加载完成，请稍后重试')
+    throw new Error('绾胯矾灏氭湭鍔犺浇瀹屾垚锛岃绋嶅悗閲嶈瘯')
   }
 
   await Promise.all([
@@ -575,7 +605,7 @@ async function ensureManagedProfileWithRetry(
       }
     }
   }
-  throw lastError instanceof Error ? lastError : new Error('订阅同步失败，请稍后重试')
+  throw lastError instanceof Error ? lastError : new Error('璁㈤槄鍚屾澶辫触锛岃绋嶅悗閲嶈瘯')
 }
 
 async function buildRuntimeState(session: StoredSession) {
@@ -589,10 +619,10 @@ async function buildRuntimeState(session: StoredSession) {
     baseUrl,
     purchaseUrl: toAbsoluteUrl(baseUrl, purchasePath),
     supportUrl:
-      nav?.find((item) => (item.desc || '').includes('客服'))?.link
+      nav?.find((item) => (item.desc || '').includes('瀹㈡湇'))?.link
         ? toAbsoluteUrl(
             baseUrl,
-            nav?.find((item) => (item.desc || '').includes('客服'))?.link,
+            nav?.find((item) => (item.desc || '').includes('瀹㈡湇'))?.link,
           )
         : '',
     loginUi,
@@ -626,7 +656,7 @@ export async function bootstrapBluelayer() {
       const { baseUrl } = await resolvePanel(stored.panelIndex)
       const userResp = await v1Get(baseUrl, '/v1/userinfo', stored.cookie)
       if (userResp.code !== 200 || !userResp.data) {
-        throw new Error(userResp.info || '会话已失效')
+      throw new Error(userResp.info || '\u4f1a\u8bdd\u5df2\u5931\u6548')
       }
 
       const nextSession: StoredSession = {
@@ -672,7 +702,7 @@ export async function loginBluelayer(username: string, password: string) {
 
     const result = await v1Post(baseUrl, '/v1/login', { username, password })
     if (result.payload.code !== 200 || !result.payload.data) {
-      throw new Error(result.payload.info || '登录失败')
+      throw new Error(result.payload.info || '鐧诲綍澶辫触')
     }
 
     const updateLogin = await v1Post(BLUELAYER_UPDATE_BASE_URL, '/v1/login', {
@@ -713,11 +743,11 @@ export async function loginBluelayer(username: string, password: string) {
 
 export async function refreshBluelayerSubscription() {
   const current = getStoredSession()
-  if (!current) throw new Error('未登录')
+  if (!current) throw new Error('\u672a\u767b\u5f55')
   const { baseUrl } = await resolvePanel(current.panelIndex)
   const userResp = await v1Get(baseUrl, '/v1/userinfo', current.cookie)
   if (userResp.code !== 200 || !userResp.data) {
-    throw new Error(userResp.info || '用户信息获取失败')
+    throw new Error(userResp.info || '鐢ㄦ埛淇℃伅鑾峰彇澶辫触')
   }
   const nextSession = { ...current, userInfo: userResp.data as UserInfo }
   saveStoredSession(nextSession)
@@ -760,51 +790,67 @@ export async function openPurchasePage() {
     loginConfig.purchase_path || '/user/shop',
   )
 
-  try {
-    await openBluelayerPanelWindow(
-      targetUrl,
-      'Bluelayer 套餐中心',
-      current?.cookie,
-    )
-  } catch {
-    await open(targetUrl)
-  }
+  await openBluelayerPanelWindow(
+    targetUrl,
+    '\u0042\u006c\u0075\u0065\u006c\u0061\u0079\u0065\u0072 \u5957\u9910\u4e2d\u5fc3',
+    current?.cookie,
+  )
+}
+
+export async function openRechargePage() {
+  const current = getStoredSession()
+  const resolved = await resolvePanel(current?.panelIndex)
+  const targetUrl = toAbsoluteUrl(resolved.baseUrl, '/user/code')
+
+  await openBluelayerPanelWindow(
+    targetUrl,
+    '\u0042\u006c\u0075\u0065\u006c\u0061\u0079\u0065\u0072 \u4f59\u989d\u5145\u503c',
+    current?.cookie,
+  )
 }
 
 export async function openForgotPasswordPage() {
   const current = getStoredSession()
   const resolved = await resolvePanel(current?.panelIndex)
-  await open(toAbsoluteUrl(resolved.baseUrl, '/password/reset'))
+  await openBluelayerPanelWindow(
+    toAbsoluteUrl(resolved.baseUrl, '/password/reset'),
+    '\u0042\u006c\u0075\u0065\u006c\u0061\u0079\u0065\u0072 \u627e\u56de\u5bc6\u7801',
+  )
+}
+
+export async function openRegisterPage() {
+  const current = getStoredSession()
+  const resolved = await resolvePanel(current?.panelIndex)
+  await openBluelayerPanelWindow(
+    toAbsoluteUrl(resolved.baseUrl, '/auth/register'),
+    '\u0042\u006c\u0075\u0065\u006c\u0061\u0079\u0065\u0072 \u6ce8\u518c',
+  )
 }
 
 export async function openSupportPage() {
   const current = getStoredSession()
   const { baseUrl } = await resolvePanel(current?.panelIndex)
   const nav = await fetchConfigSegment<NavItemConfig[]>(baseUrl, 'nav').catch(() => [])
-  const support = nav.find((item) => (item.desc || '').includes('客服'))?.link
+  const support = nav.find((item) => (item.desc || '').includes('\u5ba2\u670d'))?.link
   const fallbackUrl = toAbsoluteUrl(baseUrl, '/user/shop')
-  if (!support) {
-    try {
-      await openBluelayerPanelWindow(
-        fallbackUrl,
-        'Bluelayer 客服中心',
-        current?.cookie,
-      )
-    } catch {
-      await open(fallbackUrl)
-    }
-    return
-  }
-  const targetUrl = toAbsoluteUrl(baseUrl, support)
-  try {
-    await openBluelayerPanelWindow(
-      targetUrl,
-      'Bluelayer 客服中心',
-      current?.cookie,
-    )
-  } catch {
-    await open(targetUrl)
-  }
+  const targetUrl = toAbsoluteUrl(baseUrl, support || fallbackUrl)
+  await openBluelayerPanelWindow(
+    targetUrl,
+    '\u0042\u006c\u0075\u0065\u006c\u0061\u0079\u0065\u0072 \u5ba2\u670d\u4e2d\u5fc3',
+    current?.cookie,
+  )
+}
+
+export async function openInvitePage() {
+  const current = getStoredSession()
+  const { baseUrl } = await resolvePanel(current?.panelIndex)
+  const targetUrl = toAbsoluteUrl(baseUrl, '/user/invite')
+
+  await openBluelayerPanelWindow(
+    targetUrl,
+    '\u0042\u006c\u0075\u0065\u006c\u0061\u0079\u0065\u0072 \u9080\u8bf7\u8fd4\u5229',
+    current?.cookie,
+  )
 }
 
 export async function fetchPcAlert() {
@@ -817,7 +863,7 @@ export async function fetchPcAlert() {
   const data = payload.data as { title?: string; content?: string; show?: boolean }
   const hash = `${data.title || ''}::${data.content || ''}`
   return {
-    title: data.title || '公告',
+    title: data.title || '鍏憡',
     content: data.content || '',
     hash,
   }

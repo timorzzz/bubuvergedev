@@ -14,6 +14,7 @@ import {
 import { open as openUrl } from '@tauri-apps/plugin-shell'
 import { CSS } from '@dnd-kit/utilities'
 import { List, Menu, MenuItem, Paper, ThemeProvider } from '@mui/material'
+import { version as appVersion } from '@root/package.json'
 import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import type { CSSProperties } from 'react'
@@ -515,6 +516,8 @@ const Layout = () => {
                 {t('layout.components.navigation.menu.restoreDefaultOrder')}
               </MenuItem>
             </Menu>
+
+            <div className="the-version">v{appVersion}</div>
           </div>
 
           <div className="layout-content__right">

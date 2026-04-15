@@ -109,8 +109,11 @@ export const SysproxyViewer = forwardRef<DialogRef>((props, ref) => {
   const [hostOptions, setHostOptions] = useState<string[]>([])
 
   const { clashConfig } = useAppData()
-  const { indicator: isProxyReallyEnabled, invalidateProxyState } =
-    useSystemProxyState()
+  const {
+    indicator: isProxyReallyEnabled,
+    configState: isProxyConfigured,
+    invalidateProxyState,
+  } = useSystemProxyState()
 
   const {
     enable_system_proxy: enabled,
@@ -204,6 +207,12 @@ export const SysproxyViewer = forwardRef<DialogRef>((props, ref) => {
     const port = import.meta.env.DEV ? 11233 : 33331
     return `http://${host}:${port}/commands/pac`
   }, [value.proxy_host])
+
+  const currentProxyStatusText = isProxyReallyEnabled
+    ? t('shared.statuses.enabled')
+    : isProxyConfigured
+      ? '\u5e94\u7528\u4e2d'
+      : t('shared.statuses.disabled')
 
   const bypassError =
     value.enable_bypass_check &&
@@ -463,9 +472,7 @@ export const SysproxyViewer = forwardRef<DialogRef>((props, ref) => {
               {t('settings.modals.sysproxy.fields.enableStatus')}
             </Typography>
             <Typography className="value">
-              {isProxyReallyEnabled
-                ? t('shared.statuses.enabled')
-                : t('shared.statuses.disabled')}
+              {currentProxyStatusText}
             </Typography>
           </FlexBox>
           {!value.pac && (

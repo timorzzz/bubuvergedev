@@ -1,5 +1,6 @@
 use super::CmdResult;
 use crate::core::autostart;
+use crate::config::{decrypt_data, encrypt_data};
 use crate::{cmd::StringifyErr as _, feat, utils::dirs};
 use clash_verge_logging::{Type, logging};
 use nanoid::nanoid;
@@ -42,6 +43,16 @@ pub fn open_web_url(url: String) -> CmdResult<()> {
 pub fn log_home_route_debug(message: String) -> CmdResult<()> {
     logging!(info, Type::Cmd, "[HomeRouteDebug] {}", message);
     Ok(())
+}
+
+#[tauri::command]
+pub fn encrypt_local_data(data: String) -> CmdResult<String> {
+    Ok(encrypt_data(data.as_str()).stringify_err()?.into())
+}
+
+#[tauri::command]
+pub fn decrypt_local_data(payload: String) -> CmdResult<String> {
+    Ok(decrypt_data(payload.as_str()).stringify_err()?.into())
 }
 
 #[tauri::command]
@@ -101,6 +112,7 @@ fn create_bluelayer_panel_window(
         .inner_size(1180.0, 820.0)
         .min_inner_size(960.0, 680.0)
         .visible(false)
+        .disable_drag_drop_handler()
         .resizable(true)
         .closable(true)
         .minimizable(true)

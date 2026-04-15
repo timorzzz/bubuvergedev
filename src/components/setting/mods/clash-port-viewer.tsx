@@ -31,7 +31,7 @@ const generateRandomPort = () =>
 
 export const ClashPortViewer = forwardRef<ClashPortViewerRef>((_, ref) => {
   const { t } = useTranslation()
-  const { clashInfo, patchInfo } = useClashInfo()
+  const { clashInfo, patchInfo, invalidateClashConfig } = useClashInfo()
   const { verge, patchVerge } = useVerge()
   const [open, setOpen] = useState(false)
 
@@ -65,7 +65,11 @@ export const ClashPortViewer = forwardRef<ClashPortViewerRef>((_, ref) => {
   const { loading, run: saveSettings } = useRequest(
     async (params: { clashConfig: any; vergeConfig: any }) => {
       const { clashConfig, vergeConfig } = params
-      await Promise.all([patchInfo(clashConfig), patchVerge(vergeConfig)])
+      // Persist clash ports first so the subsequent Verge-triggered restart
+      // regenerates runtime config from the latest saved port values.
+      await patchInfo(clashConfig)
+      await patchVerge(vergeConfig)
+      await invalidateClashConfig()
     },
     {
       manual: true,

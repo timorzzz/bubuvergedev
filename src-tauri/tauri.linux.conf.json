@@ -1,6 +1,27 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "identifier": "uk.bluelayer.client",
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Bluelayer 加速器",
+        "width": 800,
+        "height": 580,
+        "minWidth": 800,
+        "minHeight": 580,
+        "maxWidth": 800,
+        "maxHeight": 580,
+        "resizable": false,
+        "maximizable": false,
+        "minimizable": true,
+        "closable": true,
+        "fullscreen": false,
+        "center": true,
+        "visible": true
+      }
+    ]
+  },
   "bundle": {
     "targets": [
       "deb",

@@ -77,39 +77,61 @@ export const LayoutItem = ({ to, children, icon, onClick, sortable }: Props) => 
             }
           }}
           sx={(theme) => ({
-            width: 48,
-            height: 48,
-            minWidth: 48,
-            borderRadius: 3,
+            width: 68,
+            minWidth: 68,
+            minHeight: 74,
+            borderRadius: 2,
             justifyContent: 'center',
-            p: 0,
-            color: 'text.secondary',
+            alignItems: 'center',
+            flexDirection: 'column',
+            gap: 0.5,
+            p: '8px 4px 6px',
+            color:
+              theme.palette.mode === 'light'
+                ? '#6b7689'
+                : 'rgba(255,255,255,0.7)',
             cursor: draggable ? 'grab' : 'pointer',
             '&:active': draggable ? { cursor: 'grabbing' } : undefined,
             '& .MuiListItemIcon-root': {
               minWidth: 0,
               m: 0,
               color: 'inherit',
+              '& > *': {
+                fontSize: 30,
+              },
             },
             '& .MuiListItemText-root': {
-              display: 'none',
+              display: 'block',
+              margin: 0,
+              textAlign: 'center',
+              '& .MuiTypography-root': {
+                fontSize: 12,
+                lineHeight: 1.15,
+                fontWeight: 500,
+                color: 'inherit',
+              },
             },
             '&:hover': {
-              backgroundColor: alpha(theme.palette.common.white, 0.08),
-              color: theme.palette.common.white,
+              backgroundColor:
+                theme.palette.mode === 'light'
+                  ? alpha(theme.palette.primary.main, 0.08)
+                  : alpha(theme.palette.primary.main, 0.16),
+              color: theme.palette.primary.main,
             },
             '&.Mui-selected': {
               backgroundColor:
                 theme.palette.mode === 'light'
-                  ? alpha(theme.palette.primary.main, 0.18)
+                  ? alpha(theme.palette.primary.main, 0.14)
                   : alpha(theme.palette.primary.main, 0.22),
               color: theme.palette.primary.main,
-              boxShadow: `0 12px 30px ${alpha(theme.palette.primary.main, 0.18)}`,
+              '& .MuiTypography-root': {
+                fontWeight: 700,
+              },
             },
             '&.Mui-selected:hover': {
               backgroundColor:
                 theme.palette.mode === 'light'
-                  ? alpha(theme.palette.primary.main, 0.22)
+                  ? alpha(theme.palette.primary.main, 0.18)
                   : alpha(theme.palette.primary.main, 0.28),
             },
           })}

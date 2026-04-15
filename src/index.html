@@ -11,23 +11,23 @@
     <title>Bluelayer 加速器</title>
     <style>
       :root {
-        --bg-color: #f3efe7;
-        --panel-color: rgba(255, 250, 242, 0.94);
-        --text-color: #1f1810;
-        --muted-color: rgba(31, 24, 16, 0.68);
-        --accent-color: #ff9f1c;
-        --border-color: rgba(31, 24, 16, 0.08);
-        --shadow-color: rgba(20, 16, 10, 0.16);
+        --bg-color: #eef2f6;
+        --panel-color: #ffffff;
+        --text-color: #1f2a3c;
+        --muted-color: #7b8798;
+        --accent-color: #2688ea;
+        --border-color: rgba(19, 31, 53, 0.08);
+        --shadow-color: rgba(13, 20, 34, 0.16);
         color-scheme: light;
       }
 
       html[data-theme='dark'] {
-        --bg-color: #0b0b0d;
-        --panel-color: rgba(18, 18, 22, 0.92);
+        --bg-color: #0a1320;
+        --panel-color: #0f1826;
         --text-color: #ffffff;
-        --muted-color: rgba(255, 255, 255, 0.78);
+        --muted-color: rgba(255, 255, 255, 0.72);
         --border-color: rgba(255, 255, 255, 0.08);
-        --shadow-color: rgba(0, 0, 0, 0.45);
+        --shadow-color: rgba(0, 0, 0, 0.42);
         color-scheme: dark;
       }
 
@@ -37,6 +37,7 @@
         height: 100%;
         margin: 0;
         color: var(--text-color);
+        font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
       }
 
       #root {
@@ -47,64 +48,103 @@
       #initial-loading-overlay {
         position: fixed;
         inset: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background:
-          radial-gradient(circle at top, rgba(255, 159, 28, 0.2), transparent 24%),
-          radial-gradient(circle at bottom right, rgba(255, 214, 102, 0.08), transparent 24%),
-          var(--bg-color);
+        display: block;
+        background: var(--bg-color);
         z-index: 9999;
+        pointer-events: none;
         transition: opacity 0.2s ease-out;
+        overflow: hidden;
       }
 
       #initial-loading-overlay[data-hidden='true'] {
         opacity: 0;
-        pointer-events: none;
       }
 
       .initial-loading-card {
-        width: min(420px, calc(100vw - 48px));
-        padding: 48px 32px 36px;
-        border-radius: 32px;
-        text-align: center;
+        width: 100%;
+        height: 100%;
+        display: grid;
+        grid-template-columns: 320px 1fr;
+        overflow: hidden;
+        border-radius: 0;
         background: var(--panel-color);
-        border: 1px solid var(--border-color);
-        box-shadow: 0 32px 80px var(--shadow-color);
+        border: 0;
+        box-shadow: none;
       }
 
-      .initial-loading-logo-wrap {
-        width: 168px;
-        height: 168px;
-        margin: 0 auto 22px;
-        border-radius: 999px;
-        display: grid;
-        place-items: center;
-        background:
-          radial-gradient(circle, rgba(255, 185, 79, 0.5), transparent 62%),
-          rgba(255, 159, 28, 0.08);
-        box-shadow:
-          inset 0 1px 0 rgba(255, 255, 255, 0.08),
-          0 20px 60px rgba(255, 159, 28, 0.18);
+      .initial-loading-side {
+        position: relative;
+        overflow: hidden;
+        padding: 34px 30px;
+        color: #ffffff;
+        background: linear-gradient(180deg, #7892ee 0%, #7290ee 100%);
+      }
+
+      .initial-loading-side::before,
+      .initial-loading-side::after {
+        content: '';
+        position: absolute;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.08);
+      }
+
+      .initial-loading-side::before {
+        width: 118px;
+        height: 118px;
+        top: 34px;
+        right: 28px;
+      }
+
+      .initial-loading-side::after {
+        width: 138px;
+        height: 138px;
+        left: 28px;
+        bottom: 78px;
+      }
+
+      .initial-loading-side-title {
+        position: relative;
+        z-index: 1;
+        margin: 0;
+        font-size: 18px;
+        font-weight: 700;
+      }
+
+      .initial-loading-side-subtitle {
+        position: relative;
+        z-index: 1;
+        margin: 8px 0 0;
+        font-size: 12px;
+        opacity: 0.95;
+      }
+
+      .initial-loading-main {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 48px 40px;
+        text-align: center;
       }
 
       .initial-loading-logo {
-        width: 126px;
-        height: 126px;
+        width: 150px;
+        height: 150px;
         object-fit: contain;
       }
 
       .initial-loading-title {
-        margin: 0;
-        font-size: 44px;
-        font-weight: 800;
-        letter-spacing: 0.08em;
+        margin: 18px 0 0;
+        font-size: 42px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        color: #2a3550;
       }
 
       .initial-loading-spinner {
-        width: 28px;
-        height: 28px;
-        margin: 28px auto 18px;
+        width: 24px;
+        height: 24px;
+        margin: 28px auto 16px;
         border-radius: 999px;
         border: 3px solid var(--border-color);
         border-top-color: var(--accent-color);
@@ -127,16 +167,20 @@
   <body>
     <div id="initial-loading-overlay">
       <div class="initial-loading-card">
-        <div class="initial-loading-logo-wrap">
+        <div class="initial-loading-side">
+          <h2 class="initial-loading-side-title">Bluelayer加速器</h2>
+          <p class="initial-loading-side-subtitle">谦仁网络</p>
+        </div>
+        <div class="initial-loading-main">
           <img
             class="initial-loading-logo"
             src="./assets/image/bluelayer-logo.png"
             alt="Bluelayer"
           />
+          <h1 class="initial-loading-title">Bluelayer</h1>
+          <div class="initial-loading-spinner"></div>
+          <p class="initial-loading-text">正在加载，请稍候...</p>
         </div>
-        <h1 class="initial-loading-title">BLUELAYER</h1>
-        <div class="initial-loading-spinner"></div>
-        <p class="initial-loading-text">桌面客户端正在加载，请稍候...</p>
       </div>
     </div>
     <script>

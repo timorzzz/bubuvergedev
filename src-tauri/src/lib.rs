@@ -14,7 +14,7 @@ use crate::constants::files;
 use crate::{
     core::handle,
     process::AsyncHandler,
-    utils::{resolve, resolve::window::apply_adaptive_startup_window_size, server},
+    utils::{resolve, resolve::window::apply_fixed_startup_window_size, server},
 };
 use anyhow::Result;
 use clash_verge_logging::{Type, logging};
@@ -119,9 +119,14 @@ mod app_init {
     /// Setup window state management
     pub fn setup_window_state(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         logging!(info, Type::Setup, "初始化窗口状态管理...");
+        if let Ok(app_config_dir) = app.path().app_config_dir() {
+            let _ = std::fs::remove_file(app_config_dir.join(files::WINDOW_STATE));
+        }
+        let fixed_state_flags = tauri_plugin_window_state::StateFlags::VISIBLE
+            | tauri_plugin_window_state::StateFlags::DECORATIONS;
         let window_state_plugin = tauri_plugin_window_state::Builder::new()
             .with_filename(files::WINDOW_STATE)
-            .with_state_flags(tauri_plugin_window_state::StateFlags::default())
+            .with_state_flags(fixed_state_flags)
             .build();
         app.handle().plugin(window_state_plugin)?;
         Ok(())
@@ -137,7 +142,7 @@ mod app_init {
             window.unmaximize()?;
         }
 
-        apply_adaptive_startup_window_size(&window)?;
+        apply_fixed_startup_window_size(&window)?;
         window.set_resizable(false)?;
 
         Ok(())
@@ -156,6 +161,8 @@ mod app_init {
             cmd::open_logs_dir,
             cmd::open_web_url,
             cmd::log_home_route_debug,
+            cmd::encrypt_local_data,
+            cmd::decrypt_local_data,
             cmd::open_bluelayer_panel_window,
             cmd::open_core_dir,
             cmd::open_app_log,

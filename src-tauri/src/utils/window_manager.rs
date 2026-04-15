@@ -1,4 +1,7 @@
-use crate::{core::handle, utils::resolve::window::build_new_window};
+use crate::{
+    core::handle,
+    utils::resolve::window::{apply_fixed_startup_window_size, build_new_window},
+};
 use clash_verge_limiter::Limiter;
 use clash_verge_logging::{Type, logging};
 use once_cell::sync::Lazy;
@@ -147,6 +150,8 @@ impl WindowManager {
                     return WindowOperationResult::NoAction;
                 }
                 if let Some(window) = window {
+                    let _ = apply_fixed_startup_window_size(&window);
+                    let _ = window.set_resizable(false);
                     Self::activate_window(&window)
                 } else {
                     WindowOperationResult::Failed
@@ -219,6 +224,15 @@ impl WindowManager {
         logging!(info, Type::Window, "开始激活窗口");
 
         let mut operations_successful = true;
+
+        if let Err(e) = apply_fixed_startup_window_size(window) {
+            logging!(warn, Type::Window, "固定窗口尺寸失败: {}", e);
+            operations_successful = false;
+        }
+        if let Err(e) = window.set_resizable(false) {
+            logging!(warn, Type::Window, "设置窗口不可调整失败: {}", e);
+            operations_successful = false;
+        }
 
         // 1. 如果窗口最小化，先取消最小化
         if window.is_minimized().unwrap_or(false) {
@@ -295,7 +309,9 @@ impl WindowManager {
             }
 
             match build_new_window().await {
-                Ok(_) => {
+                Ok(window) => {
+                    let _ = apply_fixed_startup_window_size(&window);
+                    let _ = window.set_resizable(false);
                     logging!(info, Type::Window, "新窗口创建成功，等待前端渲染后显示");
 
                     #[cfg(target_os = "macos")]

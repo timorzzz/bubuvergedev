@@ -1,13 +1,15 @@
-﻿import {
+import {
   Alert,
   Box,
   Button,
+  Checkbox,
   CircularProgress,
+  FormControlLabel,
   IconButton,
   InputAdornment,
   Stack,
-  ThemeProvider,
   TextField,
+  ThemeProvider,
   Typography,
   createTheme,
 } from '@mui/material'
@@ -21,16 +23,18 @@ import {
   WorkspacePremiumRounded,
 } from '@mui/icons-material'
 
-import brandLogo from '@/assets/image/bluelayer-logo.png'
 import {
   bootstrapBluelayer,
   canUseBluelayer,
+  getRememberedCredentials,
   loginBluelayer,
   logoutBluelayer,
   openForgotPasswordPage,
   openPurchasePage,
+  openRegisterPage,
   openSupportPage,
   refreshBluelayerSubscription,
+  saveRememberedCredentials,
   useBluelayerState,
 } from '@/services/bluelayer'
 import { useThemeMode } from '@/services/states'
@@ -47,35 +51,65 @@ const formatTraffic = (value?: number) => {
   return `${size.toFixed(index === 0 ? 0 : 2)} ${units[index]}`
 }
 
-const gateBackground = (isLight: boolean, backgroundImage?: string) => ({
-  width: '100vw',
-  height: '100vh',
-  display: 'grid',
-  placeItems: 'center',
-  p: 3,
+const buildGateTheme = (isLight: boolean) =>
+  createTheme({
+    palette: {
+      mode: isLight ? 'light' : 'dark',
+      primary: {
+        main: '#2688ea',
+      },
+    },
+    typography: {
+      fontFamily:
+        '"Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif',
+    },
+  })
+
+const rootStyle = (isLight: boolean) => ({
+  width: '100%',
+  height: '100%',
   overflow: 'hidden',
-  position: 'relative',
-  backgroundImage: backgroundImage
-    ? isLight
-      ? `linear-gradient(rgba(255, 248, 238, 0.86), rgba(255, 244, 223, 0.92)), url(${backgroundImage})`
-      : `linear-gradient(rgba(8, 8, 10, 0.8), rgba(8, 8, 10, 0.92)), url(${backgroundImage})`
-    : isLight
-      ? 'radial-gradient(circle at top, rgba(255,159,28,0.2), transparent 26%), radial-gradient(circle at bottom right, rgba(255,214,102,0.12), transparent 24%), linear-gradient(135deg, #f7f1e7, #fff8ef)'
-      : 'radial-gradient(circle at top, rgba(255,159,28,0.18), transparent 26%), radial-gradient(circle at bottom right, rgba(255,214,102,0.09), transparent 24%), linear-gradient(135deg, #09090b, #121216)',
-  backgroundSize: 'cover',
-  backgroundPosition: 'center',
+  display: 'block',
+  background: isLight ? '#eef2f6' : '#0a1320',
 })
+
+const windowStyle = {
+  width: '100%',
+  height: '100%',
+  display: 'grid',
+  gridTemplateColumns: '320px 1fr',
+  overflow: 'hidden',
+  borderRadius: 0,
+  background: '#ffffff',
+  boxShadow: 'none',
+} as const
+
+const sidePanelStyle = (backgroundImage?: string) => ({
+  position: 'relative' as const,
+  height: '100%',
+  padding: '34px 30px',
+  color: '#ffffff',
+  background: backgroundImage
+    ? `linear-gradient(rgba(112, 139, 236, 0.92), rgba(112, 139, 236, 0.96)), url(${backgroundImage}) center/cover`
+    : 'linear-gradient(180deg, #7892ee 0%, #7290ee 100%)',
+})
+
+const decorationStyle = {
+  position: 'absolute' as const,
+  borderRadius: '50%',
+  background: 'rgba(255,255,255,0.08)',
+}
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export const BluelayerGate = () => {
   const bluelayer = useBluelayerState()
   const themeMode = useThemeMode()
   const isLight = themeMode === 'light'
-  const gateTheme = useMemo(
-    () => createTheme({ palette: { mode: isLight ? 'light' : 'dark' } }),
-    [isLight],
-  )
+  const gateTheme = useMemo(() => buildGateTheme(isLight), [isLight])
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [rememberMe, setRememberMe] = useState(true)
   const [error, setError] = useState('')
   const [showPassword, setShowPassword] = useState(false)
 
@@ -83,23 +117,53 @@ export const BluelayerGate = () => {
     void bootstrapBluelayer()
   }, [])
 
+  useEffect(() => {
+    void (async () => {
+      const remembered = await getRememberedCredentials()
+      if (!remembered) {
+        setRememberMe(false)
+        return
+      }
+      setUsername(remembered.username)
+      setPassword(remembered.password)
+      setRememberMe(true)
+    })()
+  }, [])
+
   const userInfo = bluelayer.session?.userInfo
   const hasPackage = useMemo(
     () => canUseBluelayer(bluelayer.session),
     [bluelayer.session],
   )
+  const usernameHasSpace = /\s/.test(username)
+  const usernameTrimmed = username.trim()
+  const usernameErrorText = useMemo(() => {
+    if (!username) return ''
+    if (usernameHasSpace) return '邮箱中不能包含空格，请修改后再登录。'
+    if (!EMAIL_PATTERN.test(usernameTrimmed)) return '请输入正确的邮箱格式。'
+    return ''
+  }, [username, usernameHasSpace, usernameTrimmed])
+  const isUsernameValid = !usernameErrorText && !!usernameTrimmed
 
   const onLogin = useLockFn(async () => {
     setError('')
+    if (!isUsernameValid) {
+      setError(usernameErrorText || '请输入正确的邮箱地址。')
+      return
+    }
     try {
-      await loginBluelayer(username.trim(), password)
+      await loginBluelayer(usernameTrimmed, password)
+      if (rememberMe) {
+        await saveRememberedCredentials({
+          username: usernameTrimmed,
+          password,
+        })
+      } else {
+        await saveRememberedCredentials(null)
+      }
       await refreshBluelayerSubscription()
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : '登录失败，请稍后重试。',
-      )
+      setError(err instanceof Error ? err.message : '登录失败，请稍后重试。')
     }
   })
 
@@ -111,61 +175,52 @@ export const BluelayerGate = () => {
   if (!bluelayer.ready || bluelayer.checking) {
     return (
       <ThemeProvider theme={gateTheme}>
-        <Box sx={gateBackground(isLight, bluelayer.loginUi?.bgImg)}>
-          <Box
-          sx={{
-            width: 'min(420px, calc(100vw - 48px))',
-            px: 4,
-            py: 5,
-            borderRadius: '32px',
-            background: isLight
-              ? 'rgba(255, 250, 242, 0.94)'
-              : 'rgba(18, 18, 22, 0.9)',
-            border: isLight
-              ? '1px solid rgba(31,24,16,0.08)'
-              : '1px solid rgba(255,255,255,0.08)',
-            boxShadow: isLight
-              ? '0 32px 80px rgba(20,16,10,0.16)'
-              : '0 32px 80px rgba(0,0,0,0.45)',
-            textAlign: 'center',
-          }}
-        >
-          <Box
-            sx={{
-              width: 176,
-              height: 176,
-              mx: 'auto',
-              mb: 2.5,
-              borderRadius: '50%',
-              display: 'grid',
-              placeItems: 'center',
-              background:
-                'radial-gradient(circle, rgba(255,185,79,0.5), transparent 62%), rgba(255,159,28,0.08)',
-              boxShadow:
-                'inset 0 1px 0 rgba(255,255,255,0.08), 0 20px 60px rgba(255,159,28,0.18)',
-            }}
-          >
+        <Box sx={rootStyle(isLight)}>
+          <Box sx={windowStyle}>
+            <Box sx={sidePanelStyle(bluelayer.loginUi?.bgImg)}>
+              <Box sx={{ ...decorationStyle, width: 118, height: 118, top: 34, right: 28 }} />
+              <Box sx={{ ...decorationStyle, width: 138, height: 138, left: 28, bottom: 78 }} />
+              <Typography sx={{ fontSize: 18, fontWeight: 700, mb: 1 }}>
+                Bluelayer加速器
+              </Typography>
+              <Typography sx={{ fontSize: 12, opacity: 0.95 }}>
+                谦仁网络
+              </Typography>
+            </Box>
+
             <Box
-              component="img"
-              src={brandLogo}
-              alt="Bluelayer"
-              sx={{ width: 132, height: 132, objectFit: 'contain' }}
-            />
-          </Box>
-          <Typography
-            variant="h2"
-            sx={{ fontWeight: 900, letterSpacing: '0.08em', fontSize: 42 }}
-          >
-            BLUELAYER
-          </Typography>
-          <CircularProgress
-            size={28}
-            sx={{ my: 3.5, color: 'primary.main' }}
-            thickness={4.2}
-          />
-          <Typography sx={{ color: 'text.secondary' }}>
-            桌面客户端正在加载，请稍候...
-          </Typography>
+              sx={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                px: 5,
+                textAlign: 'center',
+              }}
+            >
+              <CircularProgress size={26} sx={{ color: '#2688ea' }} />
+              <Typography
+                sx={{
+                  mt: 3,
+                  fontSize: 28,
+                  fontWeight: 700,
+                  color: '#273349',
+                }}
+              >
+                正在登录中
+              </Typography>
+              <Typography
+                sx={{
+                  mt: 1.2,
+                  maxWidth: 320,
+                  fontSize: 14,
+                  lineHeight: 1.8,
+                  color: '#7a8597',
+                }}
+              >
+                正在加载环境中，加载速度取决于你的网络连接质量...
+              </Typography>
+            </Box>
           </Box>
         </Box>
       </ThemeProvider>
@@ -178,138 +233,106 @@ export const BluelayerGate = () => {
 
     return (
       <ThemeProvider theme={gateTheme}>
-        <Box sx={gateBackground(isLight, bluelayer.loginUi?.bgImg)}>
-          <Box
-          sx={{
-            width: 'min(920px, calc(100vw - 48px))',
-            borderRadius: '32px',
-            overflow: 'hidden',
-            display: 'grid',
-            gridTemplateColumns: { xs: '1fr', md: '1.1fr 0.9fr' },
-            background: isLight
-              ? 'rgba(255, 250, 242, 0.94)'
-              : 'rgba(15, 15, 18, 0.94)',
-            border: isLight
-              ? '1px solid rgba(31,24,16,0.08)'
-              : '1px solid rgba(255,255,255,0.08)',
-            boxShadow: isLight
-              ? '0 36px 90px rgba(20,16,10,0.16)'
-              : '0 36px 90px rgba(0,0,0,0.46)',
-          }}
-        >
-          <Box sx={{ p: { xs: 4, md: 5 } }}>
-            <Stack spacing={2.2}>
-              <Typography variant="h3" sx={{ fontSize: 36, fontWeight: 800 }}>
-                需要有效套餐
+        <Box sx={rootStyle(isLight)}>
+          <Box sx={windowStyle}>
+            <Box sx={sidePanelStyle(bluelayer.loginUi?.bgImg)}>
+              <Box sx={{ ...decorationStyle, width: 118, height: 118, top: 34, right: 28 }} />
+              <Box sx={{ ...decorationStyle, width: 138, height: 138, left: 28, bottom: 78 }} />
+              <Typography sx={{ fontSize: 18, fontWeight: 700, mb: 1 }}>
+                Bluelayer加速器
               </Typography>
-              <Typography sx={{ color: 'text.secondary', maxWidth: 460 }}>
-                当前账号已登录，但暂时没有可用的桌面套餐。完成续费或购买后，
-                客户端才会继续提供完整的加速与分流能力。
+              <Typography sx={{ fontSize: 12, opacity: 0.95 }}>
+                当前账户已登录
               </Typography>
-
               <Box
                 sx={{
-                  mt: 1,
-                  p: 2.2,
-                  borderRadius: 3,
-                  background: isLight
-                    ? 'rgba(255,255,255,0.72)'
-                    : 'rgba(255,255,255,0.04)',
-                  border: isLight
-                    ? '1px solid rgba(31,24,16,0.06)'
-                    : '1px solid rgba(255,255,255,0.08)',
+                  position: 'absolute',
+                  left: 30,
+                  right: 30,
+                  bottom: 90,
+                  display: 'flex',
+                  justifyContent: 'space-between',
                 }}
               >
-                <Stack spacing={1}>
-                  <Typography sx={{ fontWeight: 700 }}>
+                <Box>
+                  <Typography sx={{ fontSize: 12, opacity: 0.88 }}>总流量</Typography>
+                  <Typography sx={{ mt: 0.5, fontSize: 20, fontWeight: 700 }}>
+                    {formatTraffic(total)}
+                  </Typography>
+                </Box>
+                <Box>
+                  <Typography sx={{ fontSize: 12, opacity: 0.88 }}>已用流量</Typography>
+                  <Typography sx={{ mt: 0.5, fontSize: 20, fontWeight: 700 }}>
+                    {formatTraffic(used)}
+                  </Typography>
+                </Box>
+              </Box>
+            </Box>
+
+            <Box
+              sx={{
+                p: '56px 40px',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'center',
+              }}
+            >
+              <Stack spacing={2.4}>
+                <Box>
+                  <Typography sx={{ fontSize: 32, fontWeight: 700, color: '#232f45' }}>
+                    需要有效套餐
+                  </Typography>
+                  <Typography sx={{ mt: 1, color: '#7a8597', lineHeight: 1.7 }}>
+                    当前账户已登录，但暂时没有可用的桌面套餐。完成购买或续费后，
+                    客户端才能继续提供完整的加速能力。
+                  </Typography>
+                </Box>
+
+                <Box
+                  sx={{
+                    p: 2,
+                    border: '1px solid #e6e9ef',
+                    background: '#fafbfd',
+                  }}
+                >
+                  <Typography sx={{ fontSize: 13, color: '#8b93a3' }}>当前账号</Typography>
+                  <Typography sx={{ mt: 0.5, fontSize: 22, fontWeight: 700, color: '#232f45' }}>
                     {userInfo?.true_name || userInfo?.username || '-'}
                   </Typography>
-                  <Typography sx={{ color: 'text.secondary' }}>
-                    {`套餐等级：${userInfo?.class ?? 0}`}
+                  <Typography sx={{ mt: 1, fontSize: 14, color: '#61708a' }}>
+                    套餐等级：Lv.{userInfo?.class ?? 0}
                   </Typography>
-                  <Typography sx={{ color: 'text.secondary' }}>
-                    {`到期时间：${userInfo?.class_expire || '暂无'}`}
+                  <Typography sx={{ mt: 0.5, fontSize: 14, color: '#61708a' }}>
+                    到期时间：{userInfo?.class_expire || '未知'}
                   </Typography>
-                </Stack>
-              </Box>
+                </Box>
 
-              <Stack direction="row" spacing={1.2} flexWrap="wrap" useFlexGap>
                 <Button
                   variant="contained"
-                  size="large"
                   startIcon={<WorkspacePremiumRounded />}
                   onClick={() => void openPurchasePage()}
-                  sx={{ borderRadius: 999, px: 3 }}
+                  sx={{ height: 40, fontWeight: 700, boxShadow: 'none' }}
                 >
                   升级或续费
                 </Button>
                 <Button
                   variant="outlined"
-                  size="large"
                   startIcon={<SupportAgentRounded />}
                   onClick={() => void openSupportPage()}
-                  sx={{ borderRadius: 999, px: 3 }}
+                  sx={{ height: 40, fontWeight: 700 }}
                 >
                   联系客服
                 </Button>
                 <Button
-                  color="inherit"
-                  size="large"
+                  variant="text"
                   startIcon={<LogoutRounded />}
                   onClick={() => void onLogout()}
-                  sx={{ borderRadius: 999, px: 3 }}
+                  sx={{ alignSelf: 'flex-start', px: 0, color: '#ff5a52', fontWeight: 700 }}
                 >
                   退出登录
                 </Button>
               </Stack>
-            </Stack>
-          </Box>
-
-          <Box
-            sx={{
-              position: 'relative',
-              p: { xs: 4, md: 5 },
-              background: isLight
-                ? 'radial-gradient(circle at center, rgba(255,159,28,0.18), transparent 40%), linear-gradient(180deg, rgba(255,255,255,0.82), rgba(255,244,223,0.7))'
-                : 'radial-gradient(circle at center, rgba(255,159,28,0.18), transparent 40%), linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02))',
-              borderLeft: {
-                xs: 'none',
-                md: isLight
-                  ? '1px solid rgba(31,24,16,0.08)'
-                  : '1px solid rgba(255,255,255,0.08)',
-              },
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'center',
-              alignItems: 'center',
-              textAlign: 'center',
-            }}
-          >
-            <Box
-              component="img"
-              src={brandLogo}
-              alt="Bluelayer"
-              sx={{ width: 220, maxWidth: '100%', mb: 3 }}
-            />
-            <Stack direction="row" spacing={4}>
-              <Box>
-                <Typography sx={{ color: 'text.secondary', mb: 0.5 }}>
-                  总流量
-                </Typography>
-                <Typography sx={{ fontWeight: 800, fontSize: 20 }}>
-                  {formatTraffic(total)}
-                </Typography>
-              </Box>
-              <Box>
-                <Typography sx={{ color: 'text.secondary', mb: 0.5 }}>
-                  已用流量
-                </Typography>
-                <Typography sx={{ fontWeight: 800, fontSize: 20 }}>
-                  {formatTraffic(used)}
-                </Typography>
-              </Box>
-            </Stack>
-          </Box>
+            </Box>
           </Box>
         </Box>
       </ThemeProvider>
@@ -320,219 +343,190 @@ export const BluelayerGate = () => {
 
   return (
     <ThemeProvider theme={gateTheme}>
-      <Box sx={gateBackground(isLight, bluelayer.loginUi?.bgImg)}>
-        <Box
-        sx={{
-          position: 'absolute',
-          inset: 0,
-          background: isLight
-            ? 'radial-gradient(circle at 15% 10%, rgba(255,159,28,0.16), transparent 20%), radial-gradient(circle at 85% 85%, rgba(255,214,102,0.12), transparent 18%)'
-            : 'radial-gradient(circle at 15% 10%, rgba(255,159,28,0.18), transparent 20%), radial-gradient(circle at 85% 85%, rgba(255,214,102,0.08), transparent 18%)',
-          filter: 'blur(8px)',
-        }}
-      />
-
-        <Box
-        sx={{
-          position: 'relative',
-          width: 'min(980px, calc(100vw - 48px))',
-          borderRadius: '32px',
-          overflow: 'hidden',
-          display: 'grid',
-          gridTemplateColumns: { xs: '1fr', md: '0.95fr 1fr' },
-          background: isLight
-            ? 'rgba(255, 250, 242, 0.95)'
-            : 'rgba(12, 12, 15, 0.94)',
-          border: isLight
-            ? '1px solid rgba(31,24,16,0.08)'
-            : '1px solid rgba(255,255,255,0.08)',
-          boxShadow: isLight
-            ? '0 36px 90px rgba(20,16,10,0.16)'
-            : '0 36px 90px rgba(0,0,0,0.5)',
-          minHeight: { xs: 'auto', md: 560 },
-        }}
-      >
-        <Box
-          component="form"
-          onSubmit={(event) => {
-            event.preventDefault()
-            void onLogin()
-          }}
-          sx={{
-            p: { xs: 4, md: 5 },
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'center',
-          }}
-        >
-          <Stack spacing={2.5}>
-            <Box textAlign={{ xs: 'center', md: 'left' }}>
-              <Typography variant="h3" sx={{ fontWeight: 800, fontSize: 42 }}>
-                登录
-              </Typography>
-              <Typography sx={{ color: 'text.secondary', mt: 1 }}>
-                {bluelayer.loginUi?.bgDesc ||
-                  '请登录你的桌面账户。'}
-              </Typography>
-            </Box>
-
-            <TextField
-              placeholder="邮箱账号"
-              autoComplete="username"
-              value={username}
-              onChange={(event) => setUsername(event.target.value)}
-              fullWidth
-              variant="outlined"
-              slotProps={{
-                input: {
-                  sx: {
-                    borderRadius: 999,
-                    backgroundColor: isLight
-                      ? 'rgba(255,255,255,0.88)'
-                      : 'rgba(255,255,255,0.06)',
-                  },
-                },
+      <Box sx={rootStyle(isLight)}>
+        <Box sx={windowStyle}>
+          <Box sx={sidePanelStyle(bluelayer.loginUi?.bgImg)}>
+            <Box sx={{ ...decorationStyle, width: 118, height: 118, top: 34, right: 28 }} />
+            <Box sx={{ ...decorationStyle, width: 138, height: 138, left: 26, bottom: 74 }} />
+            <Box
+              sx={{
+                ...decorationStyle,
+                width: 92,
+                height: 92,
+                left: 140,
+                bottom: 170,
+                background:
+                  'radial-gradient(circle, rgba(255,255,255,0.3), rgba(255,255,255,0.08))',
               }}
             />
 
-            <TextField
-              placeholder="登录密码"
-              type={showPassword ? 'text' : 'password'}
-              autoComplete="current-password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              fullWidth
-              variant="outlined"
-              slotProps={{
-                input: {
-                  sx: {
-                    borderRadius: 999,
-                    backgroundColor: isLight
-                      ? 'rgba(255,255,255,0.88)'
-                      : 'rgba(255,255,255,0.06)',
+            <Typography sx={{ fontSize: 18, fontWeight: 700, mb: 1 }}>
+              Bluelayer加速器
+            </Typography>
+            <Typography sx={{ fontSize: 12, opacity: 0.95 }}>
+              {bluelayer.loginUi?.bgDesc || '谦仁网络'}
+            </Typography>
+
+          </Box>
+
+          <Box
+            component="form"
+            onSubmit={(event) => {
+              event.preventDefault()
+              void onLogin()
+            }}
+            sx={{
+              p: '78px 40px 40px',
+              display: 'flex',
+              flexDirection: 'column',
+            }}
+          >
+            <Stack spacing={3}>
+              <TextField
+                placeholder="用户名 (邮箱)"
+                autoComplete="username"
+                value={username}
+                onChange={(event) => {
+                  setUsername(event.target.value)
+                  if (error) setError('')
+                }}
+                error={Boolean(usernameErrorText)}
+                helperText={usernameErrorText || ' '}
+                fullWidth
+                variant="outlined"
+                slotProps={{
+                  input: {
+                    sx: {
+                      height: 32,
+                      borderRadius: 0,
+                      backgroundColor: '#ffffff',
+                    },
                   },
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <IconButton
-                        edge="end"
-                        onClick={() => setShowPassword((value) => !value)}
-                      >
-                        {showPassword ? (
-                          <VisibilityRounded />
-                        ) : (
-                          <VisibilityOffRounded />
-                        )}
-                      </IconButton>
-                    </InputAdornment>
-                  ),
-                },
-              }}
-            />
+                }}
+              />
 
-            {error ? (
-              <Alert severity="error" sx={{ borderRadius: 3 }}>
-                {error}
-              </Alert>
-            ) : null}
+              <TextField
+                placeholder="密码"
+                type={showPassword ? 'text' : 'password'}
+                autoComplete="current-password"
+                value={password}
+                onChange={(event) => {
+                  const sanitized = event.target.value.replace(/\s+/g, '')
+                  setPassword(sanitized)
+                  if (error) setError('')
+                }}
+                fullWidth
+                variant="outlined"
+                slotProps={{
+                  input: {
+                    sx: {
+                      height: 32,
+                      borderRadius: 0,
+                      backgroundColor: '#ffffff',
+                    },
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <IconButton
+                          edge="end"
+                          onClick={() => setShowPassword((value) => !value)}
+                          size="small"
+                        >
+                          {showPassword ? (
+                            <VisibilityRounded fontSize="small" />
+                          ) : (
+                            <VisibilityOffRounded fontSize="small" />
+                          )}
+                        </IconButton>
+                      </InputAdornment>
+                    ),
+                  },
+                }}
+              />
 
-            <Button
-              type="submit"
-              variant="contained"
-              size="large"
-              disabled={!username.trim() || !password}
-              sx={{ borderRadius: 999, py: 1.5, fontWeight: 800, fontSize: 18 }}
-            >
-              登录
-            </Button>
-
-            <Stack spacing={1} alignItems={{ xs: 'center', md: 'flex-start' }}>
-              <Button
-                variant="text"
-                onClick={() => void openForgotPasswordPage()}
-                sx={{ color: 'primary.main', fontWeight: 700 }}
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  mt: -1,
+                }}
               >
-                忘记密码
-              </Button>
-              <Stack direction="row" spacing={1.2} flexWrap="wrap" useFlexGap>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={rememberMe}
+                      onChange={(event) => {
+                        const checked = event.target.checked
+                        setRememberMe(checked)
+                        if (!checked) {
+                          void saveRememberedCredentials(null)
+                        }
+                      }}
+                      size="small"
+                    />
+                  }
+                  label="记住密码"
+                  sx={{
+                    color: '#5d6c84',
+                    '& .MuiTypography-root': {
+                      fontSize: 14,
+                    },
+                  }}
+                />
                 <Button
-                  variant="outlined"
-                  onClick={() => void openPurchasePage()}
-                  sx={{ borderRadius: 999 }}
+                  variant="text"
+                  onClick={() => void openForgotPasswordPage()}
+                  sx={{ minWidth: 0, px: 0, color: '#2688ea', fontWeight: 500 }}
                 >
-                  购买套餐
+                  忘记密码
                 </Button>
+              </Box>
+
+              {error ? (
+                <Alert severity="error" sx={{ borderRadius: 0 }}>
+                  {error}
+                </Alert>
+              ) : null}
+
+              <Button
+                type="submit"
+                variant="contained"
+                disabled={!isUsernameValid || !password}
+                sx={{
+                  height: 32,
+                  borderRadius: 0,
+                  boxShadow: 'none',
+                  fontWeight: 700,
+                  fontSize: 16,
+                }}
+              >
+                登录
+              </Button>
+
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8, fontSize: 14 }}>
+                <Typography sx={{ color: '#5d6c84', fontSize: 14 }}>还没有账号？</Typography>
+                <Button
+                  variant="text"
+                  onClick={() => void openRegisterPage()}
+                  sx={{ minWidth: 0, px: 0, color: '#2688ea', fontWeight: 500 }}
+                >
+                  立即注册
+                </Button>
+              </Box>
+
+              <Stack direction="row" spacing={1.2} flexWrap="wrap" useFlexGap sx={{ pt: 1 }}>
                 <Button
                   variant="text"
                   onClick={() => void openSupportPage()}
-                  sx={{ borderRadius: 999 }}
+                  sx={{ minWidth: 0, px: 0, color: '#5d6c84', fontWeight: 500 }}
                 >
                   联系客服
                 </Button>
               </Stack>
             </Stack>
-          </Stack>
-        </Box>
-
-        <Box
-          sx={{
-            position: 'relative',
-            p: { xs: 4, md: 5 },
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            background: isLight
-              ? 'linear-gradient(180deg, rgba(255,255,255,0.82), rgba(255,244,223,0.7))'
-              : 'linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02))',
-            borderLeft: {
-              xs: 'none',
-              md: isLight
-                ? '1px solid rgba(31,24,16,0.08)'
-                : '1px solid rgba(255,255,255,0.08)',
-            },
-          }}
-        >
-          <Box
-            sx={{
-              width: '100%',
-              maxWidth: 420,
-              aspectRatio: '1 / 1.2',
-              borderRadius: 5,
-              border: isLight
-                ? '1px solid rgba(31,24,16,0.08)'
-                : '1px solid rgba(255,255,255,0.08)',
-              background: isLight
-                ? 'radial-gradient(circle at center, rgba(255,159,28,0.16), transparent 34%), linear-gradient(180deg, rgba(255,255,255,0.88), rgba(255,244,223,0.76))'
-                : 'radial-gradient(circle at center, rgba(255,159,28,0.16), transparent 34%), linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03))',
-              display: 'grid',
-              placeItems: 'center',
-              position: 'relative',
-              overflow: 'hidden',
-            }}
-          >
-            <Box
-              sx={{
-                position: 'absolute',
-                inset: 18,
-                borderRadius: 5,
-                border: '1px solid rgba(255,255,255,0.04)',
-              }}
-            />
-            <Box
-              component="img"
-              src={brandLogo}
-              alt="Bluelayer"
-              sx={{
-                width: '70%',
-                maxWidth: 260,
-                position: 'relative',
-                zIndex: 1,
-              }}
-            />
           </Box>
-        </Box>
         </Box>
       </Box>
     </ThemeProvider>
   )
 }
-

@@ -138,6 +138,14 @@ export async function logHomeRouteDebug(message: string) {
   return invoke<void>('log_home_route_debug', { message })
 }
 
+export async function encryptLocalData(data: string) {
+  return invoke<string>('encrypt_local_data', { data })
+}
+
+export async function decryptLocalData(payload: string) {
+  return invoke<string>('decrypt_local_data', { payload })
+}
+
 export async function syncTrayProxySelection() {
   return invoke<void>('sync_tray_proxy_selection')
 }

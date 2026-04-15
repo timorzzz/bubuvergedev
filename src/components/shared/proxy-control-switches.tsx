@@ -272,12 +272,8 @@ const ProxyControlSwitches = ({
   const systemProxyActive =
     (systemProxyConfigState ?? false) || systemProxyIndicator
 
-  const systemProxyLabel = isZh
-    ? 'VPN代理连接开关'
-    : 'System Proxy (Recommended)'
-  const tunLabel = isZh
-    ? '虚拟网卡模式（备用）'
-    : 'TUN Mode (Fallback)'
+  const systemProxyLabel = isZh ? '\u7cfb\u7edf\u4ee3\u7406' : 'System Proxy'
+  const tunLabel = isZh ? 'TUN\u6a21\u5f0f' : 'TUN Mode'
 
   const systemProxyStatusText = isZh
     ? systemProxyIndicator
