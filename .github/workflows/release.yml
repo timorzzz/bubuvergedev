@@ -90,10 +90,13 @@ jobs:
       - run: |
           if [ -z "$UPDATE_LOGS" ]; then
             echo "No update logs found, using default message"
-            UPDATE_LOGS="## 版本说明
+            UPDATE_LOGS=$(cat <<'EOF'
+          ## 版本说明
 
-- 本次发布包含最新功能优化与问题修复。
-- 如升级后遇到异常，请反馈版本号、系统版本和复现步骤。"
+          - 本次发布包含最新功能优化与问题修复。
+          - 如升级后遇到异常，请反馈版本号、系统版本和复现步骤。
+          EOF
+            )
           else
             echo "Using found update logs"
           fi
@@ -553,13 +556,16 @@ jobs:
 
       - name: Generate release.txt
         if: ${{ steps.telegram_guard.outputs.enabled == 'true' }}
-      - run: |
+        run: |
           if [ -z "$UPDATE_LOGS" ]; then
             echo "No update logs found, using default message"
-            UPDATE_LOGS="## 版本说明
+            UPDATE_LOGS=$(cat <<'EOF'
+          ## 版本说明
 
-- 本次发布包含最新功能优化与问题修复。
-- 如升级后遇到异常，请反馈版本号、系统版本和复现步骤。"
+          - 本次发布包含最新功能优化与问题修复。
+          - 如升级后遇到异常，请反馈版本号、系统版本和复现步骤。
+          EOF
+            )
           else
             echo "Using found update logs"
           fi

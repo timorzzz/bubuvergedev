@@ -66,10 +66,13 @@ jobs:
       - run: |
           if [ -z "$UPDATE_LOGS" ]; then
             echo "No update logs found, using default message"
-            UPDATE_LOGS="## 自动构建说明
+            UPDATE_LOGS=$(cat <<'EOF'
+          ## 自动构建说明
 
-- 本次为自动构建测试版本，用于功能验证与问题修复确认。
-- 如遇到问题，请优先反馈当前版本号、系统版本和复现步骤。"
+          - 本次为自动构建测试版本，用于功能验证与问题修复确认。
+          - 如遇到问题，请优先反馈当前版本号、系统版本和复现步骤。
+          EOF
+            )
           else
             echo "Using found update logs"
           fi
@@ -463,13 +466,18 @@ jobs:
           echo "DOWNLOAD_URL=https://github.com/${{ env.RELEASE_REPOSITORY }}/releases/download/autobuild" >> $GITHUB_ENV
           echo "BUILDTIME=$(TZ=Asia/Shanghai date)" >> $GITHUB_ENV
 
-      - run: |
+      - name: Generate release.txt
+        if: ${{ steps.telegram_guard.outputs.enabled == 'true' }}
+        run: |
           if [ -z "$UPDATE_LOGS" ]; then
             echo "No update logs found, using default message"
-            UPDATE_LOGS="## 自动构建说明
+            UPDATE_LOGS=$(cat <<'EOF'
+          ## 自动构建说明
 
-- 本次为自动构建测试版本，用于功能验证与问题修复确认。
-- 如遇到问题，请优先反馈当前版本号、系统版本和复现步骤。"
+          - 本次为自动构建测试版本，用于功能验证与问题修复确认。
+          - 如遇到问题，请优先反馈当前版本号、系统版本和复现步骤。
+          EOF
+            )
           else
             echo "Using found update logs"
           fi
