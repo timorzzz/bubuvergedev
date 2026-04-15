@@ -3,6 +3,15 @@
 .htaccess
 */.DS_Store
 .DS_Store
+node_modules/
+target/
+dist/
+src/dist/
+.turbo/
+.vite/
+coverage/
+.cache/
+.pnpm-store/
 composer.lock
 .php_cs.cache
 .env
@@ -37,3 +46,9 @@ public/.user.ini
 resources/views/material/analytics.tpl
 
 test/tpl_files.txt
+
+# Local runtime binaries and downloaded build resources
+src-tauri/sidecar/*
+!src-tauri/sidecar/.gitkeep
+src-tauri/resources/*
+!src-tauri/resources/.gitkeep
