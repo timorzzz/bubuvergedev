@@ -2,11 +2,7 @@ use dark_light::{Mode as SystemTheme, detect as detect_system_theme};
 use tauri::utils::config::Color;
 use tauri::{LogicalSize, Size, Theme, WebviewWindow};
 
-use crate::{
-    config::Config,
-    core::handle,
-    utils::resolve::window_script::build_window_initial_script,
-};
+use crate::{config::Config, core::handle, utils::resolve::window_script::build_window_initial_script};
 use clash_verge_logging::{Type, logging_error};
 
 const DARK_BACKGROUND_COLOR: Color = Color(46, 48, 61, 255);
@@ -61,24 +57,19 @@ pub async fn build_new_window() -> Result<WebviewWindow, String> {
         LIGHT_BACKGROUND_COLOR
     };
 
-    let initial_script =
-        build_window_initial_script(initial_theme_mode, DARK_BACKGROUND_HEX, LIGHT_BACKGROUND_HEX);
+    let initial_script = build_window_initial_script(initial_theme_mode, DARK_BACKGROUND_HEX, LIGHT_BACKGROUND_HEX);
 
-    let mut builder = tauri::WebviewWindowBuilder::new(
-        app_handle,
-        "main",
-        tauri::WebviewUrl::App(start_page.into()),
-    )
-    .title("Bluelayer 加速器")
-    .center()
-    .decorations(DEFAULT_DECORATIONS)
-    .fullscreen(false)
-    .inner_size(DEFAULT_WIDTH, DEFAULT_HEIGHT)
-    .min_inner_size(DEFAULT_WIDTH, DEFAULT_HEIGHT)
-    .max_inner_size(DEFAULT_WIDTH, DEFAULT_HEIGHT)
-    .resizable(false)
-    .visible(true)
-    .initialization_script(&initial_script);
+    let mut builder = tauri::WebviewWindowBuilder::new(app_handle, "main", tauri::WebviewUrl::App(start_page.into()))
+        .title("Bluelayer 加速器")
+        .center()
+        .decorations(DEFAULT_DECORATIONS)
+        .fullscreen(false)
+        .inner_size(DEFAULT_WIDTH, DEFAULT_HEIGHT)
+        .min_inner_size(DEFAULT_WIDTH, DEFAULT_HEIGHT)
+        .max_inner_size(DEFAULT_WIDTH, DEFAULT_HEIGHT)
+        .resizable(false)
+        .visible(true)
+        .initialization_script(&initial_script);
 
     if let Some(theme) = resolved_theme {
         builder = builder.theme(Some(theme));

@@ -237,11 +237,7 @@ pub fn ipc_path() -> Result<PathBuf> {
     let namespace = app_namespace();
     let path = ensure_mihomo_safe_dir()
         .map(|base_dir| base_dir.join(namespace.clone()).join("mihomo.sock"))
-        .or_else(|| {
-            app_home_dir()
-                .ok()
-                .map(|dir| dir.join(namespace).join("mihomo.sock"))
-        })
+        .or_else(|| app_home_dir().ok().map(|dir| dir.join(namespace).join("mihomo.sock")))
         .ok_or_else(|| anyhow::anyhow!("Failed to determine ipc path"))?;
 
     if let Some(parent) = path.parent() {

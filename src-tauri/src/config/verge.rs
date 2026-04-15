@@ -285,8 +285,7 @@ pub struct IVergeTheme {
 
 impl IVerge {
     /// 有效的clash核心名称
-    pub const VALID_CLASH_CORES: &'static [&'static str] =
-        &["bluelayer-mihomo", "bluelayer-mihomo-alpha"];
+    pub const VALID_CLASH_CORES: &'static [&'static str] = &["bluelayer-mihomo", "bluelayer-mihomo-alpha"];
 
     /// 验证并修正配置文件中的clash_core值
     pub async fn validate_and_fix_config() -> Result<()> {
@@ -371,9 +370,7 @@ impl IVerge {
     }
 
     pub fn get_valid_clash_core(&self) -> String {
-        self.clash_core
-            .clone()
-            .unwrap_or_else(|| "bluelayer-mihomo".into())
+        self.clash_core.clone().unwrap_or_else(|| "bluelayer-mihomo".into())
     }
 
     pub async fn new() -> Self {

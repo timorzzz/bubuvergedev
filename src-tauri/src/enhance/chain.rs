@@ -150,8 +150,7 @@ impl ChainSupport {
         match core {
             Some(core) => matches!(
                 (self, core.as_str()),
-                (Self::ClashMeta, "bluelayer-mihomo")
-                    | (Self::ClashMetaAlpha, "bluelayer-mihomo-alpha")
+                (Self::ClashMeta, "bluelayer-mihomo") | (Self::ClashMetaAlpha, "bluelayer-mihomo-alpha")
             ),
             None => true,
         }

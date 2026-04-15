@@ -120,8 +120,7 @@ fn install_service() -> Result<()> {
 fn uninstall_service() -> Result<()> {
     logging!(info, Type::Service, "uninstall service");
 
-    let uninstall_path =
-        tauri::utils::platform::current_exe()?.with_file_name(dirs::SERVICE_UNINSTALL_NAME);
+    let uninstall_path = tauri::utils::platform::current_exe()?.with_file_name(dirs::SERVICE_UNINSTALL_NAME);
 
     if !uninstall_path.exists() {
         bail!(format!("uninstaller not found: {uninstall_path:?}"));
@@ -177,8 +176,7 @@ fn uninstall_service() -> Result<()> {
 fn install_service() -> Result<()> {
     logging!(info, Type::Service, "install service");
 
-    let install_path =
-        tauri::utils::platform::current_exe()?.with_file_name(dirs::SERVICE_INSTALL_NAME);
+    let install_path = tauri::utils::platform::current_exe()?.with_file_name(dirs::SERVICE_INSTALL_NAME);
 
     if !install_path.exists() {
         bail!(format!("installer not found: {install_path:?}"));
@@ -250,9 +248,7 @@ fn uninstall_service() -> Result<()> {
     let prompt = clash_verge_i18n::t!("service.adminUninstallPrompt");
     let prompt = prompt.replace('"', "\\\"");
     let shell_command = format!("cd / && '{}'", uninstall_shell);
-    let command = format!(
-        r#"do shell script "{shell_command}" with administrator privileges with prompt "{prompt}""#
-    );
+    let command = format!(r#"do shell script "{shell_command}" with administrator privileges with prompt "{prompt}""#);
 
     // logging!(debug, Type::Service, "uninstall command: {}", command);
 
@@ -285,13 +281,8 @@ fn install_service() -> Result<()> {
     let gid = tauri_plugin_clash_verge_sysinfo::current_gid();
     let prompt = clash_verge_i18n::t!("service.adminInstallPrompt");
     let prompt = prompt.replace('"', "\\\"");
-    let shell_command = format!(
-        "cd / && CLASH_VERGE_SERVICE_GID={gid} '{}'",
-        install_shell
-    );
-    let command = format!(
-        r#"do shell script "{shell_command}" with administrator privileges with prompt "{prompt}""#
-    );
+    let shell_command = format!("cd / && CLASH_VERGE_SERVICE_GID={gid} '{}'", install_shell);
+    let command = format!(r#"do shell script "{shell_command}" with administrator privileges with prompt "{prompt}""#);
 
     let output = StdCommand::new("osascript")
         .current_dir("/")
@@ -313,8 +304,7 @@ fn install_service() -> Result<()> {
 
 #[cfg(target_os = "macos")]
 fn ensure_macos_executable(path: &Path) -> Result<()> {
-    let metadata = fs::metadata(path)
-        .with_context(|| format!("failed to read metadata for {path:?}"))?;
+    let metadata = fs::metadata(path).with_context(|| format!("failed to read metadata for {path:?}"))?;
     let mut permissions = metadata.permissions();
     let mode = permissions.mode();
     if mode & 0o111 != 0o111 {
@@ -344,8 +334,7 @@ fn prepare_macos_service_binaries() -> Result<MacosServiceBinaries> {
     }
 
     let stage_dir = dirs::app_home_dir()?.join("service-bin");
-    fs::create_dir_all(&stage_dir)
-        .with_context(|| format!("failed to create service staging dir: {stage_dir:?}"))?;
+    fs::create_dir_all(&stage_dir).with_context(|| format!("failed to create service staging dir: {stage_dir:?}"))?;
 
     let staged_binary = stage_dir.join(dirs::SERVICE_BINARY_NAME);
     let staged_install = stage_dir.join(dirs::SERVICE_INSTALL_NAME);
@@ -364,13 +353,11 @@ fn prepare_macos_service_binaries() -> Result<MacosServiceBinaries> {
 #[cfg(target_os = "macos")]
 fn copy_macos_service_binary(source: &Path, target: &Path) -> Result<()> {
     if target.exists() {
-        fs::remove_file(target)
-            .with_context(|| format!("failed to remove stale staged binary: {target:?}"))?;
+        fs::remove_file(target).with_context(|| format!("failed to remove stale staged binary: {target:?}"))?;
     }
 
-    fs::copy(source, target).with_context(|| {
-        format!("failed to stage service binary from {source:?} to {target:?}")
-    })?;
+    fs::copy(source, target)
+        .with_context(|| format!("failed to stage service binary from {source:?} to {target:?}"))?;
     ensure_macos_executable(target)?;
     Ok(())
 }

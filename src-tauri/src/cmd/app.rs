@@ -1,19 +1,19 @@
 use super::CmdResult;
-use crate::core::autostart;
 use crate::config::{decrypt_data, encrypt_data};
+use crate::core::autostart;
 use crate::{cmd::StringifyErr as _, feat, utils::dirs};
 use clash_verge_logging::{Type, logging};
 use nanoid::nanoid;
 use serde_json::json;
 use smartstring::alias::String;
 use std::sync::mpsc::sync_channel;
-use std::time::Duration;
-use tauri::webview::PageLoadEvent;
-use tauri::{AppHandle, Listener as _, Manager as _, WebviewUrl, WebviewWindowBuilder};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
+use std::time::Duration;
+use tauri::webview::PageLoadEvent;
+use tauri::{AppHandle, Listener as _, Manager as _, WebviewUrl, WebviewWindowBuilder};
 
 #[tauri::command]
 pub async fn open_app_dir() -> CmdResult<()> {
@@ -65,15 +65,10 @@ pub async fn open_bluelayer_panel_window(
     let (tx, rx) = sync_channel(1);
     let (shown_tx, shown_rx) = sync_channel::<CmdResult<()>>(1);
     let app_handle_for_window = app_handle.clone();
-    logging!(
-        info,
-        Type::Cmd,
-        "[PanelWindow] dispatch create request to main thread"
-    );
+    logging!(info, Type::Cmd, "[PanelWindow] dispatch create request to main thread");
     app_handle
         .run_on_main_thread(move || {
-            let result =
-                create_bluelayer_panel_window(&app_handle_for_window, url, title, cookie, shown_tx);
+            let result = create_bluelayer_panel_window(&app_handle_for_window, url, title, cookie, shown_tx);
             let _ = tx.send(result);
         })
         .stringify_err()?;
@@ -145,11 +140,7 @@ fn create_bluelayer_panel_window(
     let has_cookie_pairs = !cookie_pairs.is_empty();
 
     if !has_cookie_pairs {
-        logging!(
-            info,
-            Type::Cmd,
-            "[PanelWindow] no cookies to inject for this window"
-        );
+        logging!(info, Type::Cmd, "[PanelWindow] no cookies to inject for this window");
     }
 
     builder = builder.on_page_load(move |window, payload| {
@@ -214,12 +205,7 @@ fn create_bluelayer_panel_window(
                     err
                 );
             } else {
-                logging!(
-                    info,
-                    Type::Cmd,
-                    "[PanelWindow] eval success label={}",
-                    panel_label
-                );
+                logging!(info, Type::Cmd, "[PanelWindow] eval success label={}", panel_label);
             }
             return;
         }
@@ -248,12 +234,7 @@ fn create_bluelayer_panel_window(
     let close_window = window.clone();
     let close_label = close_window.label().to_string();
     let close_handler_id = window.listen("tauri://close-requested", move |_event| {
-        logging!(
-            info,
-            Type::Cmd,
-            "[PanelWindow] close requested label={}",
-            close_label
-        );
+        logging!(info, Type::Cmd, "[PanelWindow] close requested label={}", close_label);
         if let Err(err) = close_window.destroy() {
             logging!(
                 error,
@@ -263,12 +244,7 @@ fn create_bluelayer_panel_window(
                 err
             );
         } else {
-            logging!(
-                info,
-                Type::Cmd,
-                "[PanelWindow] destroy success label={}",
-                close_label
-            );
+            logging!(info, Type::Cmd, "[PanelWindow] destroy success label={}", close_label);
         }
     });
     logging!(

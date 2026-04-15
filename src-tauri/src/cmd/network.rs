@@ -154,11 +154,7 @@ async fn ping_once(host: String, timeout_ms: u64) -> Option<u32> {
     let started_at = Instant::now();
     let mut child = command.spawn().ok()?;
 
-    let result = timeout(
-        Duration::from_millis(timeout_ms.saturating_add(800)),
-        child.wait(),
-    )
-    .await;
+    let result = timeout(Duration::from_millis(timeout_ms.saturating_add(800)), child.wait()).await;
 
     match result {
         Ok(Ok(status)) if status.success() => Some(started_at.elapsed().as_millis().max(1) as u32),

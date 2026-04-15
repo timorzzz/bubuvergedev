@@ -65,82 +65,25 @@ ${css}
 export const useCustomTheme = () => {
   const appWindow: WebviewWindow = useMemo(() => getCurrentWebviewWindow(), [])
   const { verge } = useVerge()
-  const { theme_mode, theme_setting } = verge ?? {}
+  const { theme_setting } = verge ?? {}
   const mode = useThemeMode()
   const setMode = useSetThemeMode()
   const userBackgroundImage = theme_setting?.background_image || ''
   const hasUserBackground = !!userBackgroundImage
 
   useEffect(() => {
-    if (theme_mode === 'light' || theme_mode === 'dark') {
-      setMode(theme_mode)
-    }
-  }, [theme_mode, setMode])
+    setMode('light')
+  }, [setMode])
 
   useEffect(() => {
-    if (theme_mode !== 'system') {
-      return
-    }
-
-    let isMounted = true
-
-    const timerId = setTimeout(() => {
-      if (!isMounted) return
-      appWindow
-        .theme()
-        .then((systemTheme) => {
-          if (isMounted && systemTheme) {
-            setMode(systemTheme)
-          }
-        })
-        .catch((err) => {
-          console.error('Failed to get initial system theme:', err)
-        })
-    }, 0)
-
-    const unlistenPromise = appWindow.onThemeChanged(({ payload }) => {
-      if (isMounted) {
-        setMode(payload)
-      }
+    appWindow.setTheme('light' as TauriOsTheme).catch((err) => {
+      console.error('Failed to force window theme to light:', err)
     })
-
-    return () => {
-      isMounted = false
-      clearTimeout(timerId)
-      unlistenPromise
-        .then((unlistenFn) => {
-          if (typeof unlistenFn === 'function') {
-            unlistenFn()
-          }
-        })
-        .catch((err) => {
-          console.error('Failed to unlisten from theme changes:', err)
-        })
-    }
-  }, [theme_mode, appWindow, setMode])
-
-  useEffect(() => {
-    if (theme_mode === undefined) {
-      return
-    }
-
-    if (theme_mode === 'system') {
-      appWindow.setTheme(null).catch((err) => {
-        console.error(
-          'Failed to set window theme to follow system (setTheme(null)):',
-          err,
-        )
-      })
-    } else if (mode) {
-      appWindow.setTheme(mode as TauriOsTheme).catch((err) => {
-        console.error(`Failed to set window theme to ${mode}:`, err)
-      })
-    }
-  }, [mode, appWindow, theme_mode])
+  }, [appWindow])
 
   const theme = useMemo(() => {
     const setting = theme_setting || {}
-    const dt = mode === 'light' ? defaultTheme : defaultDarkTheme
+    const dt = defaultTheme
     let muiTheme: MuiTheme
 
     try {
@@ -149,7 +92,7 @@ export const useCustomTheme = () => {
           values: { xs: 0, sm: 650, md: 900, lg: 1200, xl: 1536 },
         },
         palette: {
-          mode,
+          mode: 'light',
           primary: { main: setting.primary_color || dt.primary_color },
           secondary: { main: setting.secondary_color || dt.secondary_color },
           info: { main: setting.info_color || dt.info_color },
@@ -174,12 +117,12 @@ export const useCustomTheme = () => {
       })
     } catch (e) {
       console.error('Error creating MUI theme, falling back to defaults:', e)
-      muiTheme = createTheme({
+        muiTheme = createTheme({
         breakpoints: {
           values: { xs: 0, sm: 650, md: 900, lg: 1200, xl: 1536 },
         },
         palette: {
-          mode,
+          mode: 'light',
           primary: { main: dt.primary_color },
           secondary: { main: dt.secondary_color },
           info: { main: dt.info_color },
@@ -198,49 +141,36 @@ export const useCustomTheme = () => {
 
     const rootEle = document.documentElement
     if (rootEle) {
-      const backgroundColor = mode === 'light' ? '#f3efe7' : '#0b0b0d'
-      const selectColor = mode === 'light' ? '#fff4df' : '#332310'
-      const scrollColor = mode === 'light' ? '#b18f6488' : '#6b728088'
-      const dividerColor =
-        mode === 'light'
-          ? 'rgba(31, 24, 16, 0.08)'
-          : 'rgba(255, 255, 255, 0.08)'
+      const backgroundColor = '#f3efe7'
+      const selectColor = '#fff4df'
+      const scrollColor = '#b18f6488'
+      const dividerColor = 'rgba(31, 24, 16, 0.08)'
 
       rootEle.style.setProperty('--divider-color', dividerColor)
       rootEle.style.setProperty('--background-color', backgroundColor)
       rootEle.style.setProperty(
         '--shell-surface',
-        mode === 'light'
-          ? 'rgba(255, 250, 242, 0.88)'
-          : 'rgba(10, 10, 12, 0.92)',
+        'rgba(255, 250, 242, 0.88)',
       )
       rootEle.style.setProperty(
         '--shell-surface-soft',
-        mode === 'light'
-          ? 'linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(255, 244, 223, 0.78))'
-          : 'linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.03))',
+        'linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(255, 244, 223, 0.78))',
       )
       rootEle.style.setProperty(
         '--shell-panel-bg',
-        mode === 'light'
-          ? 'linear-gradient(180deg, rgba(255, 255, 255, 0.7), rgba(255, 248, 238, 0.92))'
-          : 'linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02))',
+        'linear-gradient(180deg, rgba(255, 255, 255, 0.7), rgba(255, 248, 238, 0.92))',
       )
       rootEle.style.setProperty(
         '--shell-text-primary',
-        mode === 'light' ? '#1f1810' : '#ffffff',
+        '#1f1810',
       )
       rootEle.style.setProperty(
         '--shell-text-secondary',
-        mode === 'light'
-          ? 'rgba(31, 24, 16, 0.68)'
-          : 'rgba(255, 255, 255, 0.72)',
+        'rgba(31, 24, 16, 0.68)',
       )
       rootEle.style.setProperty(
         '--shell-shadow',
-        mode === 'light'
-          ? '0 24px 60px rgba(20, 16, 10, 0.12)'
-          : '0 28px 80px rgba(0, 0, 0, 0.32)',
+        '0 24px 60px rgba(20, 16, 10, 0.12)',
       )
       rootEle.style.setProperty('--selection-color', selectColor)
       rootEle.style.setProperty('--scroller-color', scrollColor)
@@ -251,15 +181,15 @@ export const useCustomTheme = () => {
       )
       rootEle.style.setProperty(
         '--window-border-color',
-        mode === 'light' ? '#d7c8ae' : '#1c1c20',
+        '#d7c8ae',
       )
       rootEle.style.setProperty(
         '--scrollbar-bg',
-        mode === 'light' ? '#efe1c8' : '#19191d',
+        '#efe1c8',
       )
       rootEle.style.setProperty(
         '--scrollbar-thumb',
-        mode === 'light' ? '#c19a63' : '#555d68',
+        '#c19a63',
       )
       rootEle.style.setProperty(
         '--user-background-image',
@@ -332,9 +262,9 @@ export const useCustomTheme = () => {
         }
 
         .MuiDialog-paper {
-          background-color: ${mode === 'light' ? '#fffaf2' : '#141417'} !important;
-          border: 1px solid ${mode === 'light' ? 'rgba(31, 24, 16, 0.08)' : 'rgba(255, 255, 255, 0.08)'} !important;
-          box-shadow: ${mode === 'light' ? '0 24px 60px rgba(20, 16, 10, 0.14)' : '0 28px 80px rgba(0, 0, 0, 0.48)'} !important;
+          background-color: #fffaf2 !important;
+          border: 1px solid rgba(31, 24, 16, 0.08) !important;
+          box-shadow: 0 24px 60px rgba(20, 16, 10, 0.14) !important;
         }
       `
 
@@ -342,7 +272,7 @@ export const useCustomTheme = () => {
     }
 
     return muiTheme
-  }, [mode, theme_setting, userBackgroundImage, hasUserBackground])
+  }, [theme_setting, userBackgroundImage, hasUserBackground])
 
   useEffect(() => {
     const id = setTimeout(() => {

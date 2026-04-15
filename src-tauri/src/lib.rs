@@ -122,8 +122,8 @@ mod app_init {
         if let Ok(app_config_dir) = app.path().app_config_dir() {
             let _ = std::fs::remove_file(app_config_dir.join(files::WINDOW_STATE));
         }
-        let fixed_state_flags = tauri_plugin_window_state::StateFlags::VISIBLE
-            | tauri_plugin_window_state::StateFlags::DECORATIONS;
+        let fixed_state_flags =
+            tauri_plugin_window_state::StateFlags::VISIBLE | tauri_plugin_window_state::StateFlags::DECORATIONS;
         let window_state_plugin = tauri_plugin_window_state::Builder::new()
             .with_filename(files::WINDOW_STATE)
             .with_state_flags(fixed_state_flags)

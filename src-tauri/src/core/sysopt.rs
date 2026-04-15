@@ -129,14 +129,8 @@ impl Sysopt {
             .config
             .clone()
             .or_else(|| runtime.data_arc().config.clone());
-        let runtime_http_port = runtime_config
-            .as_ref()
-            .map(IClashTemp::guard_port)
-            .unwrap_or(0);
-        let runtime_mixed_port = runtime_config
-            .as_ref()
-            .map(IClashTemp::guard_mixed_port)
-            .unwrap_or(0);
+        let runtime_http_port = runtime_config.as_ref().map(IClashTemp::guard_port).unwrap_or(0);
+        let runtime_mixed_port = runtime_config.as_ref().map(IClashTemp::guard_mixed_port).unwrap_or(0);
 
         let port = if pac_enable {
             if runtime_mixed_port != 0 {
