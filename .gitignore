@@ -11,8 +11,9 @@ vendor
 php_errors.log
 composer.phar
 
-404.html
-index.html
+/404.html
+/index.html
+!src/index.html
 
 config/.config.php
 config/.config.php.bak
