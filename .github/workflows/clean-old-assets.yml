@@ -25,6 +25,9 @@ on:
         required: false
         default: false
         type: boolean
+    secrets:
+      RELEASES_REPO_TOKEN:
+        required: false
 
 permissions: write-all
 

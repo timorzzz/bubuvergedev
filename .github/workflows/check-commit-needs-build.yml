@@ -35,6 +35,9 @@ on:
       autobuild_version:
         description: 'The generated autobuild version string'
         value: ${{ jobs.check_commit.outputs.autobuild_version }}
+    secrets:
+      RELEASES_REPO_TOKEN:
+        required: false
 
 permissions:
   contents: read

@@ -21,6 +21,7 @@ jobs:
   check_commit:
     name: Check Commit Needs Build
     uses: ./.github/workflows/check-commit-needs-build.yml
+    secrets: inherit
     with:
       tag_name: autobuild
       force_build: ${{ github.event_name == 'workflow_dispatch' }}
@@ -126,6 +127,7 @@ jobs:
     if: ${{ needs.check_commit.outputs.should_run == 'true' && needs.update_tag.result == 'success' }}
 
     uses: ./.github/workflows/clean-old-assets.yml
+    secrets: inherit
     with:
       tag_name: autobuild
       dry_run: false
