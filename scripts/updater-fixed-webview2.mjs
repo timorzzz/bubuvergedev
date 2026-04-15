@@ -14,7 +14,11 @@ async function resolveUpdater() {
     throw new Error('GITHUB_TOKEN is required')
   }
 
-  const options = { owner: context.repo.owner, repo: context.repo.repo }
+  const [owner, repo] = (
+    process.env.RELEASE_REPOSITORY ||
+    `${context.repo.owner}/${context.repo.repo}`
+  ).split('/')
+  const options = { owner, repo }
   const github = getOctokit(process.env.GITHUB_TOKEN)
 
   const { data: tags } = await github.rest.repos.listTags({
@@ -107,10 +111,27 @@ async function resolveUpdater() {
   })
 
   // update the update.json
-  const { data: updateRelease } = await github.rest.repos.getReleaseByTag({
-    ...options,
-    tag: UPDATE_TAG_NAME,
-  })
+  let updateRelease
+  try {
+    const response = await github.rest.repos.getReleaseByTag({
+      ...options,
+      tag: UPDATE_TAG_NAME,
+    })
+    updateRelease = response.data
+  } catch (error) {
+    if (error.status === 404) {
+      const createResponse = await github.rest.repos.createRelease({
+        ...options,
+        tag_name: UPDATE_TAG_NAME,
+        name: 'Auto-update Stable Channel',
+        body: 'This release contains the update information for the stable channel.',
+        prerelease: false,
+      })
+      updateRelease = createResponse.data
+    } else {
+      throw error
+    }
+  }
 
   // delete the old assets
   for (const asset of updateRelease.assets) {

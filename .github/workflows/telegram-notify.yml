@@ -1,5 +1,8 @@
 name: Telegram Notify
 
+env:
+  RELEASE_REPOSITORY: timorzzz/bubuvergedev-releases
+
 on:
   workflow_dispatch:
     inputs:
@@ -69,7 +72,7 @@ jobs:
             VERSION=$(jq -r '.version' package.json)
           fi
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "DOWNLOAD_URL=https://github.com/${{ github.repository }}/releases/download/v${VERSION}" >> $GITHUB_ENV
+          echo "DOWNLOAD_URL=https://github.com/${{ env.RELEASE_REPOSITORY }}/releases/download/v${VERSION}" >> $GITHUB_ENV
           echo "BUILDTIME=$(TZ=Asia/Shanghai date)" >> $GITHUB_ENV
 
       - name: Generate release.txt
@@ -115,3 +118,5 @@ jobs:
           BUILD_TYPE: ${{ inputs.build_type }}
           VERSION: ${{ env.VERSION }}
           DOWNLOAD_URL: ${{ env.DOWNLOAD_URL }}
+          RELEASE_REPOSITORY: ${{ env.RELEASE_REPOSITORY }}
+

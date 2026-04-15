@@ -19,7 +19,11 @@ async function resolveUpdater() {
     throw new Error('GITHUB_TOKEN is required')
   }
 
-  const options = { owner: context.repo.owner, repo: context.repo.repo }
+  const [owner, repo] = (
+    process.env.RELEASE_REPOSITORY ||
+    `${context.repo.owner}/${context.repo.repo}`
+  ).split('/')
+  const options = { owner, repo }
   const github = getOctokit(process.env.GITHUB_TOKEN)
 
   // Fetch all tags using pagination

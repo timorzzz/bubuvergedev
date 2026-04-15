@@ -9,6 +9,7 @@ permissions: write-all
 env:
   TAG_NAME: autobuild
   TAG_CHANNEL: AutoBuild
+  RELEASE_REPOSITORY: timorzzz/bubuvergedev-releases
   CARGO_INCREMENTAL: 0
   RUST_BACKTRACE: short
   HUSKY: 0
@@ -59,7 +60,7 @@ jobs:
           echo "BUILDTIME=$(TZ=Asia/Shanghai date)" >> $GITHUB_ENV
           VERSION=$(jq -r .version package.json)
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "DOWNLOAD_URL=https://github.com/${{ github.repository }}/releases/download/autobuild" >> $GITHUB_ENV
+          echo "DOWNLOAD_URL=https://github.com/${{ env.RELEASE_REPOSITORY }}/releases/download/autobuild" >> $GITHUB_ENV
         shell: bash
 
       - run: |
@@ -98,11 +99,12 @@ jobs:
       - name: Upload Release
         uses: softprops/action-gh-release@v2
         with:
+          repository: ${{ env.RELEASE_REPOSITORY }}
           tag_name: ${{ env.TAG_NAME }}
           name: 'Bluelayer AutoBuild v${{ env.VERSION }}'
           body_path: release.txt
           prerelease: true
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.RELEASES_REPO_TOKEN }}
           generate_release_notes: false
 
   clean_old_assets:
@@ -229,7 +231,7 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           NODE_OPTIONS: '--max_old_space_size=4096'
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.RELEASES_REPO_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
@@ -239,6 +241,8 @@ jobs:
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
+          owner: timorzzz
+          repo: bubuvergedev-releases
           tagName: ${{ env.TAG_NAME }}
           releaseName: 'Bluelayer AutoBuild'
           releaseBody: 'More new features are now supported.'
@@ -253,10 +257,12 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           NODE_OPTIONS: '--max_old_space_size=4096'
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.RELEASES_REPO_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
         with:
+          owner: timorzzz
+          repo: bubuvergedev-releases
           tagName: ${{ env.TAG_NAME }}
           releaseName: 'Bluelayer AutoBuild'
           releaseBody: 'More new features are now supported.'
@@ -341,10 +347,12 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           NODE_OPTIONS: '--max_old_space_size=4096'
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.RELEASES_REPO_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
         with:
+          owner: timorzzz
+          repo: bubuvergedev-releases
           tauriScript: pnpm
           args: --target ${{ matrix.target }}
           # includeUpdaterJson: true
@@ -372,16 +380,18 @@ jobs:
       - name: Upload Release
         uses: softprops/action-gh-release@v2
         with:
+          repository: ${{ env.RELEASE_REPOSITORY }}
           tag_name: ${{ env.TAG_NAME }}
           name: 'Bluelayer AutoBuild'
           prerelease: true
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.RELEASES_REPO_TOKEN }}
           files: target/${{ matrix.target }}/release/bundle/nsis/*setup*
 
       - name: Portable Bundle
         run: pnpm portable-fixed-webview2 ${{ matrix.target }} --${{ env.TAG_NAME }}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.RELEASES_REPO_TOKEN }}
+          RELEASE_REPOSITORY: ${{ env.RELEASE_REPOSITORY }}
 
   notify-telegram:
     name: Notify Telegram
@@ -439,7 +449,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install jq
           echo "VERSION=$(cat package.json | jq '.version' | tr -d '"')" >> $GITHUB_ENV
-          echo "DOWNLOAD_URL=https://github.com/${{ github.repository }}/releases/download/autobuild" >> $GITHUB_ENV
+          echo "DOWNLOAD_URL=https://github.com/${{ env.RELEASE_REPOSITORY }}/releases/download/autobuild" >> $GITHUB_ENV
           echo "BUILDTIME=$(TZ=Asia/Shanghai date)" >> $GITHUB_ENV
 
       - name: Generate release.txt
@@ -485,4 +495,5 @@ jobs:
           BUILD_TYPE: autobuild
           VERSION: ${{ env.VERSION }}
           DOWNLOAD_URL: ${{ env.DOWNLOAD_URL }}
+          RELEASE_REPOSITORY: ${{ env.RELEASE_REPOSITORY }}
 

@@ -42,6 +42,7 @@ permissions:
 
 env:
   TAG_NAME: ${{ inputs.tag_name || 'autobuild' }}
+  RELEASE_REPOSITORY: timorzzz/bubuvergedev-releases
 
 jobs:
   check_commit:
@@ -60,7 +61,7 @@ jobs:
       - name: Check if version changed or src changed
         id: check
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.RELEASES_REPO_TOKEN }}
         run: |
           # Force build if requested
           if [ "${{ inputs.force_build }}" == "true" ]; then
@@ -117,14 +118,14 @@ jobs:
 
           # Check if autobuild release exists
           echo "🔍 Checking autobuild release and latest.json..."
-          AUTOBUILD_RELEASE_EXISTS=$(gh release view "${{ env.TAG_NAME }}" --json id -q '.id' 2>/dev/null || echo "")
+          AUTOBUILD_RELEASE_EXISTS=$(gh release view "${{ env.TAG_NAME }}" -R "${{ env.RELEASE_REPOSITORY }}" --json id -q '.id' 2>/dev/null || echo "")
 
           if [ -z "$AUTOBUILD_RELEASE_EXISTS" ]; then
             echo "✅ No autobuild release exists, build needed"
             echo "should_run=true" >> $GITHUB_OUTPUT
           else
             # Check if latest.json exists in the release
-            LATEST_JSON_EXISTS=$(gh release view "${{ env.TAG_NAME }}" --json assets -q '.assets[] | select(.name == "latest.json") | .name' 2>/dev/null || echo "")
+            LATEST_JSON_EXISTS=$(gh release view "${{ env.TAG_NAME }}" -R "${{ env.RELEASE_REPOSITORY }}" --json assets -q '.assets[] | select(.name == "latest.json") | .name' 2>/dev/null || echo "")
             
             if [ -z "$LATEST_JSON_EXISTS" ]; then
               echo "✅ No latest.json found in autobuild release, build needed"
@@ -132,7 +133,7 @@ jobs:
             else
               # Download and parse latest.json to check version and commit hash
               echo "📥 Downloading latest.json to check version..."
-              LATEST_JSON_URL="https://github.com/${{ github.repository }}/releases/download/autobuild/latest.json"
+              LATEST_JSON_URL="https://github.com/${{ env.RELEASE_REPOSITORY }}/releases/download/autobuild/latest.json"
               
               LATEST_JSON_CONTENT=$(curl -sL "$LATEST_JSON_URL" 2>/dev/null || echo "")
               

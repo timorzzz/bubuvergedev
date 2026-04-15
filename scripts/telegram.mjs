@@ -7,7 +7,9 @@ import { log_error, log_info, log_success } from './utils.mjs'
 const CHAT_ID_RELEASE = '@clash_verge_re'
 const CHAT_ID_TEST = '@vergetest'
 const GITHUB_REPOSITORY =
-  process.env.GITHUB_REPOSITORY || 'your-account/your-repo'
+  process.env.RELEASE_REPOSITORY ||
+  process.env.GITHUB_REPOSITORY ||
+  'your-account/your-repo'
 const GITHUB_RELEASE_BASE = `https://github.com/${GITHUB_REPOSITORY}/releases`
 
 async function sendTelegramNotification() {

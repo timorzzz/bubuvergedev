@@ -31,6 +31,7 @@ permissions: write-all
 env:
   TAG_NAME: ${{ inputs.tag_name || 'autobuild' }}
   TAG_CHANNEL: AutoBuild
+  RELEASE_REPOSITORY: timorzzz/bubuvergedev-releases
 
 jobs:
   check_current_version:
@@ -109,7 +110,7 @@ jobs:
 
       - name: Clean old assets from release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.RELEASES_REPO_TOKEN }}
           TAG_NAME: ${{ env.TAG_NAME }}
           DRY_RUN: ${{ inputs.dry_run }}
         run: |
@@ -125,7 +126,7 @@ jobs:
           echo "🔍 Dry run mode: $DRY_RUN"
 
           # Check if release exists
-          RELEASE_EXISTS=$(gh release view "$TAG_NAME" --json id -q '.id' 2>/dev/null || echo "")
+          RELEASE_EXISTS=$(gh release view "$TAG_NAME" -R "$RELEASE_REPOSITORY" --json id -q '.id' 2>/dev/null || echo "")
 
           if [ -z "$RELEASE_EXISTS" ]; then
             echo "❌ Release '$TAG_NAME' not found"
@@ -136,7 +137,7 @@ jobs:
 
           # Get all assets
           echo "📋 Getting list of all assets..."
-          assets=$(gh release view "$TAG_NAME" --json assets -q '.assets[].name' || true)
+          assets=$(gh release view "$TAG_NAME" -R "$RELEASE_REPOSITORY" --json assets -q '.assets[].name' || true)
 
           if [ -z "$assets" ]; then
             echo "ℹ️  No assets found in release '$TAG_NAME'"
@@ -195,7 +196,7 @@ jobs:
               fi
               
               echo "  Deleting: $asset"
-              if gh release delete-asset "$TAG_NAME" "$asset" -y 2>/dev/null; then
+              if gh release delete-asset "$TAG_NAME" "$asset" -R "$RELEASE_REPOSITORY" -y 2>/dev/null; then
                 DELETED_COUNT=$((DELETED_COUNT + 1))
               else
                 echo "    ⚠️  Failed to delete $asset"
