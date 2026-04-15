@@ -511,7 +511,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   notify-telegram:
-    if: ${{ secrets.TELEGRAM_BOT_TOKEN != '' }}
     name: Notify Telegram
     runs-on: ubuntu-latest
     needs:
@@ -522,31 +521,49 @@ jobs:
         autobuild-x86-arm-windows_webview2,
       ]
     steps:
+      - name: Check Telegram token
+        id: telegram_guard
+        shell: bash
+        run: |
+          if [ -n "${{ secrets.TELEGRAM_BOT_TOKEN }}" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "TELEGRAM_BOT_TOKEN is not configured, skipping Telegram notification."
+          fi
+
       - name: Checkout repository
+        if: ${{ steps.telegram_guard.outputs.enabled == 'true' }}
         uses: actions/checkout@v6
 
       - name: Fetch UPDATE logs
+        if: ${{ steps.telegram_guard.outputs.enabled == 'true' }}
         id: fetch_update_logs
         run: bash ./scripts/extract_update_logs.sh
         shell: bash
 
       - name: Install Node
+        if: ${{ steps.telegram_guard.outputs.enabled == 'true' }}
         uses: actions/setup-node@v6
         with:
           node-version: '24.14.1'
 
       - uses: pnpm/action-setup@v5.0.0
+        if: ${{ steps.telegram_guard.outputs.enabled == 'true' }}
         name: Install pnpm
         with:
           run_install: false
 
       - name: Install dependencies
+        if: ${{ steps.telegram_guard.outputs.enabled == 'true' }}
         run: pnpm install --frozen-lockfile
 
       - name: Release AutoBuild Version
+        if: ${{ steps.telegram_guard.outputs.enabled == 'true' }}
         run: pnpm release-version autobuild-latest
 
       - name: Get Version and Release Info
+        if: ${{ steps.telegram_guard.outputs.enabled == 'true' }}
         run: |
           sudo apt-get update
           sudo apt-get install jq
@@ -555,6 +572,7 @@ jobs:
           echo "BUILDTIME=$(TZ=Asia/Shanghai date)" >> $GITHUB_ENV
 
       - name: Generate release.txt
+        if: ${{ steps.telegram_guard.outputs.enabled == 'true' }}
         run: |
           if [ -z "$UPDATE_LOGS" ]; then
             echo "No update logs found, using default message"
@@ -595,6 +613,7 @@ jobs:
           EOF
 
       - name: Send Telegram Notification
+        if: ${{ steps.telegram_guard.outputs.enabled == 'true' }}
         run: node scripts/telegram.mjs
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
