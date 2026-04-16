@@ -9,10 +9,10 @@ import {
   Snackbar,
   Typography,
 } from '@mui/material'
+import { useQuery } from '@tanstack/react-query'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useLockFn } from 'ahooks'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import { delayGroup, healthcheckProxyProvider } from 'tauri-plugin-mihomo-api'
 
@@ -20,7 +20,7 @@ import { BaseEmpty } from '@/components/base'
 import { useProxySelection } from '@/hooks/use-proxy-selection'
 import { useVerge } from '@/hooks/use-verge'
 import { useAppData } from '@/providers/app-data-context'
-import { updateProxyChainConfigInRuntime } from '@/services/cmds'
+import { calcuProxies, updateProxyChainConfigInRuntime } from '@/services/cmds'
 import delayManager from '@/services/delay'
 import { debugLog } from '@/utils/debug'
 
@@ -49,8 +49,18 @@ interface ProxyChainItem {
 
 export const ProxyGroups = (props: Props) => {
   const { t } = useTranslation()
-  const navigate = useNavigate()
   const { mode, isChainMode = false, chainConfigData } = props
+
+  useQuery({
+    queryKey: ['getProxies'],
+    queryFn: calcuProxies,
+    refetchInterval: 3000,
+    refetchIntervalInBackground: false,
+    staleTime: 1500,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  })
+
   const [proxyChain, setProxyChain] = useState<ProxyChainItem[]>(() => {
     try {
       const saved = localStorage.getItem('proxy-chain-items')
@@ -82,14 +92,10 @@ export const ProxyGroups = (props: Props) => {
   const groups = proxiesData?.groups
   const availableGroups = useMemo(() => {
     if (!groups) return []
-    const baseGroups = isChainMode
+    // 在链式代理模式下，仅显示支持选择节点的 Selector 代理组
+    return isChainMode
       ? groups.filter((g: any) => g.type === 'Selector')
       : groups
-    const preferred = baseGroups.filter((g: any) =>
-      `${g?.name || ''}`.includes('国外流量'),
-    )
-    if (preferred.length > 0) return preferred
-    return baseGroups.slice(0, 1)
   }, [groups, isChainMode])
 
   const defaultRuleGroup = useMemo(() => {
@@ -124,9 +130,6 @@ export const ProxyGroups = (props: Props) => {
   const { handleProxyGroupChange } = useProxySelection({
     onSuccess: () => {
       onProxies()
-      if (!isChainMode) {
-        navigate('/')
-      }
     },
     onError: (error) => {
       console.error('代理切换失败', error)
@@ -440,7 +443,7 @@ export const ProxyGroups = (props: Props) => {
                       >
                         <Chip
                           size="small"
-                          label={`${currentGroup.name}`}
+                          label={`${currentGroup.name} (${currentGroup.type})`}
                           variant="outlined"
                           sx={{
                             fontSize: '12px',
@@ -587,7 +590,7 @@ export const ProxyGroups = (props: Props) => {
                   {group.name}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
-                  {group.all.length} 条线路
+                  {group.type} · {group.all.length} 节点
                 </Typography>
               </Box>
             </MenuItem>

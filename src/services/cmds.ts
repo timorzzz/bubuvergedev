@@ -110,18 +110,6 @@ export async function patchClashMode(payload: string) {
   return invoke<void>('patch_clash_mode', { payload })
 }
 
-export async function pingHosts(
-  hosts: string[],
-  timeoutMs = 1500,
-  rounds = 3,
-) {
-  return invoke<Record<string, number>>('ping_hosts', {
-    hosts,
-    timeoutMs,
-    rounds,
-  })
-}
-
 export async function openBluelayerPanelWindow(
   url: string,
   title?: string,
@@ -134,10 +122,6 @@ export async function openBluelayerPanelWindow(
   })
 }
 
-export async function logHomeRouteDebug(message: string) {
-  return invoke<void>('log_home_route_debug', { message })
-}
-
 export async function encryptLocalData(data: string) {
   return invoke<string>('encrypt_local_data', { data })
 }
@@ -148,14 +132,6 @@ export async function decryptLocalData(payload: string) {
 
 export async function syncTrayProxySelection() {
   return invoke<void>('sync_tray_proxy_selection')
-}
-
-export async function setSystemProxyEnabled(enabled: boolean) {
-  return invoke<boolean>('set_system_proxy_enabled', { enabled })
-}
-
-export async function setTunModeEnabled(enabled: boolean) {
-  return invoke<boolean>('set_tun_mode_enabled', { enabled })
 }
 
 export async function calcuProxies(): Promise<{

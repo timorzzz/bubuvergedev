@@ -3,16 +3,14 @@ import { useQuery } from '@tanstack/react-query'
 import { queryClient } from '@/services/query-client'
 import { checkUpdateSafe } from '@/services/update'
 
+import { useVerge } from './use-verge'
+
 export interface UpdateInfo {
   version: string
   body: string
   date: string
   available: boolean
-  checkFailed?: boolean
-  downloadUrl?: string
-  message?: string
-  currentVersion?: string
-  rawJson?: Record<string, unknown>
+  downloadAndInstall: (onEvent?: any) => Promise<void>
 }
 
 const LAST_CHECK_KEY = 'last_check_update'
@@ -31,10 +29,10 @@ export const updateLastCheckTime = (timestamp?: number): number => {
   return now
 }
 
-// --- useUpdate hook ---
-
-export const useUpdate = (_enabled: boolean = false) => {
-  const shouldCheck = false
+export const useUpdate = (enabled: boolean = true) => {
+  const { verge } = useVerge()
+  const { auto_check_update } = verge || {}
+  const shouldCheck = enabled && auto_check_update !== false
 
   const {
     data: updateInfo,
@@ -50,11 +48,10 @@ export const useUpdate = (_enabled: boolean = false) => {
     enabled: shouldCheck,
     retry: 2,
     staleTime: 60 * 60 * 1000,
-    refetchInterval: false,
+    refetchInterval: 24 * 60 * 60 * 1000,
     refetchOnWindowFocus: false,
   })
 
-  // Shared last check timestamp
   const { data: lastCheckUpdate } = useQuery({
     queryKey: [LAST_CHECK_KEY],
     queryFn: readLastCheckTime,

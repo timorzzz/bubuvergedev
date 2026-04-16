@@ -30,7 +30,13 @@ const BLUELAYER_SESSION_KEY = 'bluelayer_session_v1'
 const BLUELAYER_SESSION_MAX_AGE = 7 * 24 * 60 * 60 * 1000
 const BLUELAYER_SUBSCRIPTION_CACHE_KEY = 'bluelayer_subscription_cache_v1'
 const BLUELAYER_CREDENTIALS_KEY = 'bluelayer_credentials_v1'
+const BLUELAYER_LOGIN_CONFIG_CACHE_KEY = 'bluelayer_login_config_cache_v1'
+const BLUELAYER_PANEL_CACHE_KEY = 'bluelayer_panel_cache_v1'
+const BLUELAYER_FULL_CONFIG_CACHE_KEY = 'bluelayer_full_config_cache_v1'
 const BLUELAYER_SUBSCRIPTION_CACHE_TTL = 24 * 60 * 60 * 1000
+const BLUELAYER_LOGIN_CONFIG_CACHE_TTL = 30 * 60 * 1000
+const BLUELAYER_PANEL_CACHE_TTL = 30 * 60 * 1000
+const BLUELAYER_FULL_CONFIG_CACHE_TTL = 30 * 60 * 1000
 const V1_KEY = 'RocketMaker'
 
 type LoginConfig = {
@@ -95,6 +101,17 @@ type RememberedCredentials = {
   password: string
 }
 
+type CachedRecord<T> = {
+  value: T
+  savedAt: number
+}
+
+type ResolvedPanel = {
+  baseUrl: string
+  panelIndex: number
+  purchasePath: string
+}
+
 type BluelayerState = {
   ready: boolean
   checking: boolean
@@ -115,6 +132,9 @@ const defaultState: BluelayerState = {
 
 let state: BluelayerState = defaultState
 let bootstrapPromise: Promise<void> | null = null
+let loginConfigPromise: Promise<LoginConfig> | null = null
+let panelResolvePromise: Promise<ResolvedPanel> | null = null
+let subscriptionRefreshPromise: Promise<StoredSession> | null = null
 const listeners = new Set<() => void>()
 
 function emit() {
@@ -169,6 +189,34 @@ function saveManagedSubscriptionCache(cache: ManagedSubscriptionCache | null) {
 
 function clearManagedSubscriptionCache() {
   saveManagedSubscriptionCache(null)
+}
+
+function getCachedRecord<T>(key: string, ttl: number): T | null {
+  try {
+    const raw = localStorage.getItem(key)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as CachedRecord<T>
+    if (!parsed?.savedAt || Date.now() - parsed.savedAt >= ttl) {
+      localStorage.removeItem(key)
+      return null
+    }
+    return parsed.value ?? null
+  } catch {
+    localStorage.removeItem(key)
+    return null
+  }
+}
+
+function saveCachedRecord<T>(key: string, value: T | null) {
+  if (!value) {
+    localStorage.removeItem(key)
+    return
+  }
+  const payload: CachedRecord<T> = {
+    value,
+    savedAt: Date.now(),
+  }
+  localStorage.setItem(key, JSON.stringify(payload))
 }
 
 export async function getRememberedCredentials(): Promise<RememberedCredentials | null> {
@@ -294,6 +342,13 @@ async function httpText(
 }
 
 async function fetchLoginConfig(): Promise<LoginConfig> {
+  const cached = getCachedRecord<LoginConfig>(
+    BLUELAYER_LOGIN_CONFIG_CACHE_KEY,
+    BLUELAYER_LOGIN_CONFIG_CACHE_TTL,
+  )
+  if (cached?.panels?.length) return cached
+  if (loginConfigPromise) return loginConfigPromise
+
   const parseLoginConfig = (raw: string): LoginConfig => {
     const data = JSON.parse(raw) as LoginConfig
     const panels = Array.isArray(data.panels)
@@ -311,22 +366,33 @@ async function fetchLoginConfig(): Promise<LoginConfig> {
     BLUELAYER_LOGIN_CONFIG_BACKUP_URL,
   ]
 
-  for (const configUrl of remoteConfigUrls) {
+  loginConfigPromise = (async () => {
     try {
-      const { text } = await httpText(configUrl, { timeout: 15000 })
-      const parsed = parseLoginConfig(text)
-      if (parsed.panels.length > 0) {
-        return parsed
-      }
+      const parsed = await Promise.any(
+        remoteConfigUrls.map(async (configUrl) => {
+          const { text } = await httpText(configUrl, { timeout: 6000 })
+          const next = parseLoginConfig(text)
+          if (!next.panels.length) {
+            throw new Error('empty login config')
+          }
+          return next
+        }),
+      )
+      saveCachedRecord(BLUELAYER_LOGIN_CONFIG_CACHE_KEY, parsed)
+      return parsed
     } catch {
-      // continue to next config source
+      const fallback = {
+        panels: [normalizeBaseUrl(BLUELAYER_FALLBACK_PANEL_URL)],
+        purchase_path: '/user/shop',
+      }
+      saveCachedRecord(BLUELAYER_LOGIN_CONFIG_CACHE_KEY, fallback)
+      return fallback
+    } finally {
+      loginConfigPromise = null
     }
-  }
+  })()
 
-  return {
-    panels: [normalizeBaseUrl(BLUELAYER_FALLBACK_PANEL_URL)],
-    purchase_path: '/user/shop',
-  }
+  return loginConfigPromise
 }
 
 type FullConfigResponse = {
@@ -340,9 +406,22 @@ const configCache = new Map<string, FullConfigResponse>()
 async function fetchFullConfig(baseUrl: string): Promise<FullConfigResponse> {
   const safeBase = normalizeBaseUrl(baseUrl)
   if (configCache.has(safeBase)) return configCache.get(safeBase)!
-  const { text } = await httpText(`${safeBase}/v1/config`, { timeout: 12000 })
+  const persistedCache = getCachedRecord<Record<string, FullConfigResponse>>(
+    BLUELAYER_FULL_CONFIG_CACHE_KEY,
+    BLUELAYER_FULL_CONFIG_CACHE_TTL,
+  )
+  const persisted = persistedCache?.[safeBase]
+  if (persisted) {
+    configCache.set(safeBase, persisted)
+    return persisted
+  }
+  const { text } = await httpText(`${safeBase}/v1/config`, { timeout: 6000 })
   const data = JSON.parse(text) as FullConfigResponse
   configCache.set(safeBase, data)
+  saveCachedRecord(BLUELAYER_FULL_CONFIG_CACHE_KEY, {
+    ...(persistedCache || {}),
+    [safeBase]: data,
+  })
   return data
 }
 
@@ -354,25 +433,47 @@ async function fetchConfigSegment<T = any>(baseUrl: string, seg: keyof FullConfi
 async function resolvePanel(panelIndex?: number) {
   const config = await fetchLoginConfig()
   const panels = config.panels
-  const tryOrder = typeof panelIndex === 'number'
-    ? [panels[panelIndex], ...panels.filter((_, index) => index !== panelIndex)]
-    : panels
+  const cached = getCachedRecord<ResolvedPanel>(
+    BLUELAYER_PANEL_CACHE_KEY,
+    BLUELAYER_PANEL_CACHE_TTL,
+  )
+  if (
+    cached &&
+    panels.includes(cached.baseUrl) &&
+    (typeof panelIndex !== 'number' || cached.panelIndex === panelIndex)
+  ) {
+    return cached
+  }
+  if (panelResolvePromise) return panelResolvePromise
 
-  for (const panel of tryOrder) {
-    if (!panel) continue
+  panelResolvePromise = (async () => {
+    const tryOrder = typeof panelIndex === 'number'
+      ? [panels[panelIndex], ...panels.filter((_, index) => index !== panelIndex)]
+      : panels
+
     try {
-      await fetchConfigSegment(panel, 'login')
-      return {
-        baseUrl: panel,
-        panelIndex: panels.indexOf(panel),
+      const baseUrl = await Promise.any(
+        tryOrder.filter(Boolean).map(async (panel) => {
+          await fetchConfigSegment(panel, 'login')
+          return panel
+        }),
+      )
+
+      const resolved = {
+        baseUrl,
+        panelIndex: panels.indexOf(baseUrl),
         purchasePath: config.purchase_path || '/user/shop',
       }
+      saveCachedRecord(BLUELAYER_PANEL_CACHE_KEY, resolved)
+      return resolved
     } catch {
-      // continue
+      throw new Error('\u65e0\u6cd5\u8fde\u63a5\u5230\u53ef\u7528\u9762\u677f')
+    } finally {
+      panelResolvePromise = null
     }
-  }
+  })()
 
-  throw new Error('\u65e0\u6cd5\u8fde\u63a5\u5230\u53ef\u7528\u9762\u677f')
+  return panelResolvePromise
 }
 
 async function v1Get(baseUrl: string, path: string, cookie?: string) {
@@ -509,8 +610,8 @@ async function clearManagedProfiles() {
 }
 
 async function waitForProxyReady() {
-  for (let index = 0; index < 6; index += 1) {
-    await new Promise((resolve) => setTimeout(resolve, 1200))
+  for (let index = 0; index < 4; index += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 600))
     try {
       const proxyData = await calcuProxies()
       const hasGroups = (proxyData.groups?.length ?? 0) > 0
@@ -595,13 +696,13 @@ async function ensureManagedProfileWithRetry(
   subscriptionUrl: string,
 ) {
   let lastError: unknown = null
-  for (let attempt = 0; attempt < 4; attempt += 1) {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
       return await ensureManagedProfile(baseUrl, subscriptionUrl)
     } catch (error) {
       lastError = error
-      if (attempt < 3) {
-        await new Promise((resolve) => setTimeout(resolve, 1200 * (attempt + 1)))
+      if (attempt < 1) {
+        await new Promise((resolve) => setTimeout(resolve, 800))
       }
     }
   }
@@ -639,11 +740,29 @@ export async function bootstrapBluelayer() {
       const stored = getStoredSession()
       if (!stored || Date.now() - stored.createdAt > BLUELAYER_SESSION_MAX_AGE) {
         saveStoredSession(null)
-        const { baseUrl } = await resolvePanel().catch(() => ({ baseUrl: '' }))
-        const loginUi = baseUrl
-          ? await fetchConfigSegment<LoginUiConfig>(baseUrl, 'login').catch(() => null)
-          : null
-        setState({ ready: true, checking: false, authenticated: false, session: null, loginUi })
+        const cachedPanel = getCachedRecord<ResolvedPanel>(
+          BLUELAYER_PANEL_CACHE_KEY,
+          BLUELAYER_PANEL_CACHE_TTL,
+        )
+        const cachedLoginUi =
+          cachedPanel?.baseUrl
+            ? await fetchConfigSegment<LoginUiConfig>(cachedPanel.baseUrl, 'login').catch(() => null)
+            : null
+        setState({
+          ready: true,
+          checking: false,
+          authenticated: false,
+          session: null,
+          loginUi: cachedLoginUi,
+        })
+        void resolvePanel()
+          .then(({ baseUrl }) =>
+            fetchConfigSegment<LoginUiConfig>(baseUrl, 'login').catch(() => null),
+          )
+          .then((loginUi) => {
+            if (loginUi) setState({ loginUi })
+          })
+          .catch(() => null)
         return
       }
 
@@ -742,23 +861,33 @@ export async function loginBluelayer(username: string, password: string) {
 }
 
 export async function refreshBluelayerSubscription() {
+  if (subscriptionRefreshPromise) return subscriptionRefreshPromise
+
   const current = getStoredSession()
   if (!current) throw new Error('\u672a\u767b\u5f55')
-  const { baseUrl } = await resolvePanel(current.panelIndex)
-  const userResp = await v1Get(baseUrl, '/v1/userinfo', current.cookie)
-  if (userResp.code !== 200 || !userResp.data) {
-    throw new Error(userResp.info || '鐢ㄦ埛淇℃伅鑾峰彇澶辫触')
-  }
-  const nextSession = { ...current, userInfo: userResp.data as UserInfo }
-  saveStoredSession(nextSession)
-  if (hasPackage(nextSession.userInfo) && nextSession.userInfo.pc_sub) {
-    clearManagedSubscriptionCache()
-    await ensureManagedProfileWithRetry(baseUrl, nextSession.userInfo.pc_sub)
-  } else {
-    await clearManagedProfiles().catch(() => null)
-  }
-  setState({ session: nextSession, authenticated: true, ready: true })
-  return nextSession
+  subscriptionRefreshPromise = (async () => {
+    try {
+      const { baseUrl } = await resolvePanel(current.panelIndex)
+      const userResp = await v1Get(baseUrl, '/v1/userinfo', current.cookie)
+      if (userResp.code !== 200 || !userResp.data) {
+        throw new Error(userResp.info || '鐢ㄦ埛淇℃伅鑾峰彇澶辫触')
+      }
+      const nextSession = { ...current, userInfo: userResp.data as UserInfo }
+      saveStoredSession(nextSession)
+      if (hasPackage(nextSession.userInfo) && nextSession.userInfo.pc_sub) {
+        clearManagedSubscriptionCache()
+        await ensureManagedProfileWithRetry(baseUrl, nextSession.userInfo.pc_sub)
+      } else {
+        await clearManagedProfiles().catch(() => null)
+      }
+      setState({ session: nextSession, authenticated: true, ready: true })
+      return nextSession
+    } finally {
+      subscriptionRefreshPromise = null
+    }
+  })()
+
+  return subscriptionRefreshPromise
 }
 
 export async function logoutBluelayer() {

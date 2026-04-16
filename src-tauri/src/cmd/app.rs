@@ -40,12 +40,6 @@ pub fn open_web_url(url: String) -> CmdResult<()> {
 }
 
 #[tauri::command]
-pub fn log_home_route_debug(message: String) -> CmdResult<()> {
-    logging!(info, Type::Cmd, "[HomeRouteDebug] {}", message);
-    Ok(())
-}
-
-#[tauri::command]
 pub fn encrypt_local_data(data: String) -> CmdResult<String> {
     Ok(encrypt_data(data.as_str()).stringify_err()?.into())
 }

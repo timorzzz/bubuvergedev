@@ -10,7 +10,6 @@ import { useVerge } from '@/hooks/use-verge'
 import { syncTrayProxySelection } from '@/services/cmds'
 import { debugLog } from '@/utils/debug'
 
-// 缓存连接清理
 const cleanupConnections = async (previousProxy: string) => {
   try {
     const { connections } = await getConnections()
@@ -20,10 +19,12 @@ const cleanupConnections = async (previousProxy: string) => {
 
     if (cleanupPromises.length > 0) {
       await Promise.allSettled(cleanupPromises)
-      debugLog(`[ProxySelection] 清理了 ${cleanupPromises.length} 个连接`)
+      debugLog(
+        `[ProxySelection] cleaned ${cleanupPromises.length} connections for ${previousProxy}`,
+      )
     }
   } catch (error) {
-    console.warn('[ProxySelection] 连接清理失败:', error)
+    console.warn('[ProxySelection] failed to cleanup connections:', error)
   }
 }
 
@@ -38,10 +39,8 @@ interface ProxyChangeRequest {
   proxyName: string
   previousProxy?: string
   skipConfigSave: boolean
-  silent?: boolean
 }
 
-// 代理选择 Hook
 export const useProxySelection = (options: ProxySelectionOptions = {}) => {
   const { current, patchCurrent } = useProfiles()
   const { verge } = useVerge()
@@ -50,7 +49,6 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
 
   const { onSuccess, onError, enableConnectionCleanup = true } = options
 
-  // 缓存
   const config = useMemo(
     () => ({
       autoCloseConnection: verge?.auto_close_connection ?? false,
@@ -59,15 +57,14 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
     [verge?.auto_close_connection, enableConnectionCleanup],
   )
 
-  // 切换节点
   const syncTraySelection = useCallback(() => {
     syncTrayProxySelection().catch((error) => {
-      console.error('[ProxySelection] 托盘状态同步失败:', error)
+      console.error('[ProxySelection] failed to sync tray selection:', error)
     })
   }, [])
 
   const persistSelection = useCallback(
-    async (groupName: string, proxyName: string, skipConfigSave: boolean) => {
+    (groupName: string, proxyName: string, skipConfigSave: boolean) => {
       if (!current || skipConfigSave) return
 
       const selected = current.selected ? [...current.selected] : []
@@ -80,7 +77,7 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
       }
 
       patchCurrent({ selected }).catch((error) => {
-        console.error('[ProxySelection] 保存代理选择失败:', error)
+        console.error('[ProxySelection] failed to persist selection:', error)
       })
     },
     [current, patchCurrent],
@@ -88,28 +85,16 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
 
   const executeChange = useCallback(
     async (request: ProxyChangeRequest) => {
-      const {
-        groupName,
-        proxyName,
-        previousProxy,
-        skipConfigSave,
-        silent,
-      } = request
-      debugLog(`[ProxySelection] 代理切换: ${groupName} -> ${proxyName}`)
+      const { groupName, proxyName, previousProxy, skipConfigSave } = request
+      debugLog(`[ProxySelection] switching ${groupName} -> ${proxyName}`)
 
       try {
         await selectNodeForGroup(groupName, proxyName)
-        if (!silent) {
-          onSuccess?.()
-          syncTraySelection()
-        }
-        await persistSelection(groupName, proxyName, skipConfigSave)
-        debugLog(
-          `[ProxySelection] 代理和状态同步完成: ${groupName} -> ${proxyName}`,
-        )
+        onSuccess?.()
+        syncTraySelection()
+        persistSelection(groupName, proxyName, skipConfigSave)
 
         if (
-          !silent &&
           config.enableConnectionCleanup &&
           config.autoCloseConnection &&
           previousProxy
@@ -118,27 +103,21 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
         }
       } catch (error) {
         console.error(
-          `[ProxySelection] 代理切换失败: ${groupName} -> ${proxyName}`,
+          `[ProxySelection] failed to switch ${groupName} -> ${proxyName}`,
           error,
         )
 
         try {
           await selectNodeForGroup(groupName, proxyName)
-          if (!silent) {
-            onSuccess?.()
-            syncTraySelection()
-          }
-          await persistSelection(groupName, proxyName, skipConfigSave)
-          debugLog(
-            `[ProxySelection] 代理切换回退成功: ${groupName} -> ${proxyName}`,
-          )
+          onSuccess?.()
+          syncTraySelection()
+          persistSelection(groupName, proxyName, skipConfigSave)
         } catch (fallbackError) {
           console.error(
-            `[ProxySelection] 代理切换回退也失败: ${groupName} -> ${proxyName}`,
+            `[ProxySelection] fallback also failed ${groupName} -> ${proxyName}`,
             fallbackError,
           )
           onError?.(fallbackError)
-          throw fallbackError
         }
       }
     },
@@ -153,12 +132,7 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
       while (pendingRequestRef.current) {
         const request = pendingRequestRef.current
         pendingRequestRef.current = null
-        try {
-          await executeChange(request)
-        } catch {
-          // Queue callers are best-effort; hook callbacks already surface the
-          // failure and the next queued request should still be able to run.
-        }
+        await executeChange(request)
       }
     } finally {
       isProcessingRef.current = false
@@ -186,25 +160,6 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
     [flushChangeQueue],
   )
 
-  const changeProxyAsync = useCallback(
-    async (
-      groupName: string,
-      proxyName: string,
-      previousProxy?: string,
-      skipConfigSave: boolean = false,
-      options?: { silent?: boolean },
-    ) => {
-      await executeChange({
-        groupName,
-        proxyName,
-        previousProxy,
-        skipConfigSave,
-        silent: options?.silent,
-      })
-    },
-    [executeChange],
-  )
-
   const handleSelectChange = useCallback(
     (
       groupName: string,
@@ -227,7 +182,6 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
 
   return {
     changeProxy,
-    changeProxyAsync,
     handleSelectChange,
     handleProxyGroupChange,
   }

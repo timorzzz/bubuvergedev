@@ -1,17 +1,12 @@
 use super::CmdResult;
 use crate::cmd::StringifyErr as _;
 use clash_verge_logging::{Type, logging};
-use futures::stream::{self, StreamExt};
 use gethostname::gethostname;
 use network_interface::NetworkInterface;
 use serde_yaml_ng::Mapping;
-use std::collections::HashMap;
 use std::net::TcpListener;
 use sysproxy::{Autoproxy, Sysproxy};
 use tauri_plugin_clash_verge_sysinfo;
-
-#[cfg(target_os = "windows")]
-const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 /// get the system proxy
 #[tauri::command]
@@ -121,95 +116,4 @@ pub async fn probe_connectivity() -> bool {
     }
 
     false
-}
-
-async fn ping_once(host: String, timeout_ms: u64) -> Option<u32> {
-    use std::process::Stdio;
-    use tokio::process::Command;
-    use tokio::time::{Duration, Instant, timeout};
-
-    let safe_host = host.trim();
-    if safe_host.is_empty() {
-        return None;
-    }
-
-    let mut command = Command::new("ping");
-    #[cfg(target_os = "windows")]
-    {
-        command.args(["-n", "1", "-w", &timeout_ms.to_string(), safe_host]);
-        command.creation_flags(CREATE_NO_WINDOW);
-    }
-    #[cfg(target_os = "linux")]
-    {
-        let timeout_secs = ((timeout_ms + 999) / 1000).max(1);
-        command.args(["-c", "1", "-W", &timeout_secs.to_string(), safe_host]);
-    }
-    #[cfg(target_os = "macos")]
-    {
-        command.args(["-c", "1", "-W", &timeout_ms.to_string(), safe_host]);
-    }
-
-    command.stdout(Stdio::null()).stderr(Stdio::null());
-
-    let started_at = Instant::now();
-    let mut child = command.spawn().ok()?;
-
-    let result = timeout(Duration::from_millis(timeout_ms.saturating_add(800)), child.wait()).await;
-
-    match result {
-        Ok(Ok(status)) if status.success() => Some(started_at.elapsed().as_millis().max(1) as u32),
-        Ok(Ok(_)) | Ok(Err(_)) => None,
-        Err(_) => {
-            let _ = child.kill().await;
-            None
-        }
-    }
-}
-
-async fn ping_best_delay(host: String, timeout_ms: u64, rounds: u8) -> Option<u32> {
-    let mut best: Option<u32> = None;
-
-    for _ in 0..rounds.max(1) {
-        if let Some(delay) = ping_once(host.clone(), timeout_ms).await {
-            best = Some(best.map_or(delay, |current| current.min(delay)));
-        }
-    }
-
-    best
-}
-
-#[tauri::command]
-pub async fn ping_hosts(
-    hosts: Vec<String>,
-    timeout_ms: Option<u64>,
-    rounds: Option<u8>,
-) -> CmdResult<HashMap<String, u32>> {
-    let timeout_ms = timeout_ms.unwrap_or(1500).clamp(200, 10_000);
-    let rounds = rounds.unwrap_or(3).clamp(1, 3);
-    let mut unique_hosts = Vec::new();
-
-    for host in hosts {
-        let normalized = host.trim().to_string();
-        if normalized.is_empty() || unique_hosts.contains(&normalized) {
-            continue;
-        }
-        unique_hosts.push(normalized);
-    }
-
-    let pairs = stream::iter(unique_hosts.into_iter().map(|host| async move {
-        let best = ping_best_delay(host.clone(), timeout_ms, rounds).await;
-        (host, best)
-    }))
-    .buffer_unordered(8)
-    .collect::<Vec<_>>()
-    .await;
-
-    let mut result = HashMap::new();
-    for (host, delay) in pairs {
-        if let Some(delay) = delay {
-            result.insert(host, delay);
-        }
-    }
-
-    Ok(result)
 }

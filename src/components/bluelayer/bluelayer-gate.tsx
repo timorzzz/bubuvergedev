@@ -37,6 +37,7 @@ import {
   saveRememberedCredentials,
   useBluelayerState,
 } from '@/services/bluelayer'
+import { showNotice } from '@/services/notice-service'
 import { useThemeMode } from '@/services/states'
 
 const formatTraffic = (value?: number) => {
@@ -161,7 +162,11 @@ export const BluelayerGate = () => {
       } else {
         await saveRememberedCredentials(null)
       }
-      await refreshBluelayerSubscription()
+      void refreshBluelayerSubscription().catch((err) => {
+        void showNotice.error(
+          err instanceof Error ? err.message : '登录后的订阅同步失败，请稍后重试。',
+        )
+      })
     } catch (err) {
       setError(err instanceof Error ? err.message : '登录失败，请稍后重试。')
     }

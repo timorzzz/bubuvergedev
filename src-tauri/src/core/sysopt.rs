@@ -1,5 +1,5 @@
 use crate::{
-    config::{Config, IClashTemp, IVerge},
+    config::{Config, IVerge},
     singleton,
 };
 use anyhow::Result;
@@ -58,12 +58,7 @@ async fn get_bypass() -> String {
     if custom_bypass.is_empty() {
         DEFAULT_BYPASS.into()
     } else if use_default {
-        #[cfg(target_os = "windows")]
-        let separator = ";";
-        #[cfg(not(target_os = "windows"))]
-        let separator = ",";
-
-        format!("{DEFAULT_BYPASS}{separator}{custom_bypass}").into()
+        format!("{DEFAULT_BYPASS},{custom_bypass}").into()
     } else {
         custom_bypass
     }
@@ -116,6 +111,10 @@ impl Sysopt {
         let _lock = self.update_lock.lock().await;
 
         let verge = Config::verge().await.latest_arc();
+        let port = match verge.verge_mixed_port {
+            Some(port) => port,
+            None => Config::clash().await.latest_arc().get_mixed_port(),
+        };
         let pac_port = IVerge::get_singleton_port();
         let (sys_enable, pac_enable, proxy_host, proxy_guard) = (
             verge.enable_system_proxy.unwrap_or_default(),
@@ -123,38 +122,7 @@ impl Sysopt {
             verge.proxy_host.clone().unwrap_or_else(|| String::from("127.0.0.1")),
             verge.enable_proxy_guard.unwrap_or_default(),
         );
-        let runtime = Config::runtime().await;
-        let runtime_config = runtime
-            .latest_arc()
-            .config
-            .clone()
-            .or_else(|| runtime.data_arc().config.clone());
-        let runtime_http_port = runtime_config.as_ref().map(IClashTemp::guard_port).unwrap_or(0);
-        let runtime_mixed_port = runtime_config.as_ref().map(IClashTemp::guard_mixed_port).unwrap_or(0);
-
-        let port = if pac_enable {
-            if runtime_mixed_port != 0 {
-                runtime_mixed_port
-            } else {
-                verge.verge_mixed_port.unwrap_or(7897)
-            }
-        } else if runtime_http_port != 0 {
-            runtime_http_port
-        } else if runtime_mixed_port != 0 {
-            runtime_mixed_port
-        } else {
-            verge.verge_port.unwrap_or(7899)
-        };
-        logging!(
-            info,
-            Type::Core,
-            "Applying system proxy => enable={}, pac={}, host={}, port={}",
-            sys_enable,
-            pac_enable,
-            proxy_host,
-            port
-        );
-        // 先 await, 避免持有锁导致的 Send 问题
+        // 鍏?await, 閬垮厤鎸佹湁閿佸鑷寸殑 Send 闂
         let bypass = get_bypass().await;
 
         let (sys, auto, guard_type) = {
@@ -195,22 +163,18 @@ impl Sysopt {
 
         tokio::task::spawn_blocking(move || -> Result<()> {
             match (sys.enable, auto.enable) {
-                // 关闭系统代理：两个都清掉，确保残留状态被移除
                 (false, false) => {
                     auto.set_auto_proxy()?;
                     sys.set_system_proxy()?;
                 }
-                // PAC 模式：先关全局代理，再开 PAC，最后生效的是 PAC
                 (false, true) => {
                     sys.set_system_proxy()?;
                     auto.set_auto_proxy()?;
                 }
-                // 普通系统代理模式：先关 PAC，再开全局代理，避免被 unset_proxy 覆盖
                 (true, false) => {
                     auto.set_auto_proxy()?;
                     sys.set_system_proxy()?;
                 }
-                // 理论上不会同时开启；兜底按普通系统代理处理
                 (true, true) => {
                     auto.set_auto_proxy()?;
                     sys.set_system_proxy()?;
@@ -248,28 +212,8 @@ impl Sysopt {
         };
 
         tokio::task::spawn_blocking(move || -> Result<()> {
-            match (sys.enable, auto.enable) {
-                // 关闭系统代理：两个都清掉，确保残留状态被移除
-                (false, false) => {
-                    auto.set_auto_proxy()?;
-                    sys.set_system_proxy()?;
-                }
-                // PAC 模式：先关全局代理，再开 PAC，最后生效的是 PAC
-                (false, true) => {
-                    sys.set_system_proxy()?;
-                    auto.set_auto_proxy()?;
-                }
-                // 普通系统代理模式：先关 PAC，再开全局代理，避免被 unset_proxy 覆盖
-                (true, false) => {
-                    auto.set_auto_proxy()?;
-                    sys.set_system_proxy()?;
-                }
-                // 理论上不会同时开启；兜底按普通系统代理处理
-                (true, true) => {
-                    auto.set_auto_proxy()?;
-                    sys.set_system_proxy()?;
-                }
-            }
+            auto.set_auto_proxy()?;
+            sys.set_system_proxy()?;
             Ok(())
         })
         .await??;
