@@ -38,7 +38,12 @@ import {
   refreshBluelayerSubscription,
   useBluelayerState,
 } from '@/services/bluelayer'
-import { getProfiles, installService, patchClashMode } from '@/services/cmds'
+import {
+  getProfiles,
+  installService,
+  patchClashMode,
+  setTunModeEnabled,
+} from '@/services/cmds'
 import { showNotice } from '@/services/notice-service'
 
 let preparedLatencySessionKey = ''
@@ -220,7 +225,7 @@ const RouteFlag = ({ countryCode, size = 28 }: { countryCode: string; size?: num
 const HomePage = () => {
   const theme = useTheme()
   const { activateSelected } = useProfiles()
-  const { verge, patchVerge } = useVerge()
+  const { verge, mutateVerge } = useVerge()
   const { isTunModeAvailable, mutateSystemState } = useSystemState()
   const { session } = useBluelayerState()
   const { clashConfig, proxies, refreshClashConfig, refreshProxy } = useAppData()
@@ -352,20 +357,48 @@ const HomePage = () => {
     currentMode === 'global'
       ? resolveLeafProxyName(proxies?.global?.now, proxies?.records)
       : currentNode
+  const modeResolvedRouteName = normalizeLabel(
+    activeRouteName || currentNode || routeOptions[0]?.name,
+  )
 
   const activeRoute = useMemo(
-    () =>
-      routeOptions.find((item) => item.name === preferredRouteName) ||
-      routeOptions.find((item) => item.name === activeRouteName) ||
-      routeOptions.find((item) => item.name === currentNode) ||
-      routeOptions[0],
-    [activeRouteName, currentNode, preferredRouteName, routeOptions],
+    () => {
+      if (currentMode === 'global' && modeResolvedRouteName) {
+        return (
+          routeOptions.find((item) => item.name === modeResolvedRouteName) ||
+          routeOptions.find((item) => item.name === preferredRouteName) ||
+          routeOptions[0]
+        )
+      }
+
+      return (
+        routeOptions.find((item) => item.name === preferredRouteName) ||
+        routeOptions.find((item) => item.name === activeRouteName) ||
+        routeOptions.find((item) => item.name === currentNode) ||
+        routeOptions[0]
+      )
+    },
+    [
+      activeRouteName,
+      currentMode,
+      currentNode,
+      modeResolvedRouteName,
+      preferredRouteName,
+      routeOptions,
+    ],
   )
   const activeRouteDelay = activeRoute?.delay ?? -1
 
   useEffect(() => {
     if (!routeOptions.length) {
       setPreferredRouteName('')
+      return
+    }
+
+    if (currentMode === 'global') {
+      if (modeResolvedRouteName && modeResolvedRouteName !== preferredRouteName) {
+        setPreferredRouteName(modeResolvedRouteName)
+      }
       return
     }
 
@@ -376,20 +409,25 @@ const HomePage = () => {
       return
     }
 
-    const fallbackRouteName = normalizeLabel(
-      activeRouteName || currentNode || routeOptions[0]?.name,
-    )
+    const fallbackRouteName = modeResolvedRouteName
 
     if (fallbackRouteName && fallbackRouteName !== preferredRouteName) {
       setPreferredRouteName(fallbackRouteName)
     }
-  }, [activeRouteName, currentNode, preferredRouteName, routeOptions])
+  }, [
+    activeRouteName,
+    currentMode,
+    currentNode,
+    modeResolvedRouteName,
+    preferredRouteName,
+    routeOptions,
+  ])
 
-  const isProtected =
-    Boolean(verge?.enable_tun_mode) ||
-    systemProxyIndicator ||
-    systemProxyConfigState
-  const { response: trafficResponse } = useTrafficData({ enabled: isProtected })
+  const isProtectionEnabled =
+    Boolean(verge?.enable_tun_mode) || Boolean(verge?.enable_system_proxy)
+  const hasActiveTraffic =
+    isProtectionEnabled || systemProxyIndicator || systemProxyConfigState
+  const { response: trafficResponse } = useTrafficData({ enabled: hasActiveTraffic })
   const isPreparingRoutes =
     isLoadingRoutes || (routeOptions.length > 0 && !isRouteLatencyReady)
   const uploadSpeed = trafficResponse.data?.up ?? 0
@@ -399,9 +437,9 @@ const HomePage = () => {
     (explicitRouteName?: string) => {
       const targetRouteName = normalizeLabel(
         explicitRouteName ||
-          preferredRouteName ||
-          activeRouteName ||
-          currentNode ||
+          (currentMode === 'global'
+            ? activeRouteName || currentNode || preferredRouteName
+            : preferredRouteName || activeRouteName || currentNode) ||
           routeOptions[0]?.name,
       )
 
@@ -412,7 +450,7 @@ const HomePage = () => {
           routeOptions[0],
       }
     },
-    [activeRouteName, currentNode, preferredRouteName, routeOptions],
+    [activeRouteName, currentMode, currentNode, preferredRouteName, routeOptions],
   )
 
   const restorePreferredRoute = useLockFn(
@@ -566,7 +604,8 @@ const HomePage = () => {
           throw new Error('虚拟网卡服务安装后仍不可用')
         }
 
-        await patchVerge({ enable_tun_mode: true })
+        await setTunModeEnabled(true)
+        mutateVerge()
         await Promise.all([refreshClashConfig(), refreshProxy()])
         await reapplySavedSelections()
         await restorePreferredRoute(currentMode, targetRouteName)
@@ -579,7 +618,8 @@ const HomePage = () => {
       return
     }
 
-    await patchVerge({ enable_tun_mode: target })
+    await setTunModeEnabled(target)
+    mutateVerge()
     await Promise.all([refreshClashConfig(), refreshProxy()])
     await reapplySavedSelections()
     await restorePreferredRoute(currentMode, targetRouteName)
@@ -589,17 +629,16 @@ const HomePage = () => {
     if (isPreparingRoutes) return
     const beforeSwitchIp = publicIpInfo?.ip || ''
 
-    const ready = await switchRoute(item)
+    const ready =
+      currentMode === 'global'
+        ? await syncRouteToGlobal(item.name)
+        : await switchRoute(item)
     if (!ready) return
 
     setPreferredRouteName(item.name)
     setRoutePanelOpen(false)
 
-    if (currentMode === 'global') {
-      await syncRouteToGlobal(item.name)
-    }
-
-    if (isProtected) {
+    if (hasActiveTraffic) {
       await verifyPublicIpChange(beforeSwitchIp)
     }
   })
@@ -614,7 +653,7 @@ const HomePage = () => {
         return
       }
 
-      if (systemProxyConfigState || systemProxyIndicator) {
+      if (Boolean(verge?.enable_system_proxy) || systemProxyIndicator) {
         await toggleSystemProxy(false)
         setPublicIpSummary('连接已关闭，可重新检测当前外网 IP')
         return
@@ -967,7 +1006,7 @@ const HomePage = () => {
             </Box>
 
             <Button variant="contained" onClick={() => void onToggleProtection()} disabled={isTogglingProtection} startIcon={<PowerSettingsNewRounded />} sx={{ justifySelf: 'center', mt: -0.6, minWidth: 234, height: 36, borderRadius: 999, background: '#2688ea', boxShadow: 'none', fontWeight: 700, color: '#ffffff', '&:hover': { background: '#2688ea' } }}>
-              {isTogglingProtection ? '处理中...' : isProtected ? '断开连接' : '启动连接'}
+              {isTogglingProtection ? '处理中...' : isProtectionEnabled ? '断开连接' : '启动连接'}
             </Button>
 
           </Box>

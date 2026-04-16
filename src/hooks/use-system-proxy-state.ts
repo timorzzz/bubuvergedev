@@ -4,12 +4,12 @@ import { closeAllConnections } from 'tauri-plugin-mihomo-api'
 
 import { useVerge } from '@/hooks/use-verge'
 import { useAppData } from '@/providers/app-data-context'
-import { getAutotemProxy } from '@/services/cmds'
+import { getAutotemProxy, setSystemProxyEnabled } from '@/services/cmds'
 import { queryClient } from '@/services/query-client'
 
 // 系统代理状态检测统一逻辑
 export const useSystemProxyState = () => {
-  const { verge, mutateVerge, patchVerge } = useVerge()
+  const { verge, mutateVerge } = useVerge()
   const { sysproxy, clashConfig } = useAppData()
   const { data: autoproxy } = useQuery({
     queryKey: ['getAutotemProxy'],
@@ -61,10 +61,11 @@ export const useSystemProxyState = () => {
         if (!target && verge?.auto_close_connection) {
           await closeAllConnections().catch(() => {})
         }
-        await patchVerge({ enable_system_proxy: target })
+        await setSystemProxyEnabled(target)
       }
     } finally {
       busyRef.current = false
+      mutateVerge()
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['getSystemProxy'] }),
         queryClient.invalidateQueries({ queryKey: ['getAutotemProxy'] }),

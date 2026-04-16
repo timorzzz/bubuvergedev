@@ -150,6 +150,14 @@ export async function syncTrayProxySelection() {
   return invoke<void>('sync_tray_proxy_selection')
 }
 
+export async function setSystemProxyEnabled(enabled: boolean) {
+  return invoke<boolean>('set_system_proxy_enabled', { enabled })
+}
+
+export async function setTunModeEnabled(enabled: boolean) {
+  return invoke<boolean>('set_tun_mode_enabled', { enabled })
+}
+
 export async function calcuProxies(): Promise<{
   global: IProxyGroupItem
   direct: IProxyItem
