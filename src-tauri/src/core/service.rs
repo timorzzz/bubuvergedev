@@ -322,6 +322,13 @@ struct MacosServiceBinaries {
 }
 
 #[cfg(target_os = "macos")]
+const LEGACY_SERVICE_BINARY_NAME: &str = "clash-verge-service";
+#[cfg(target_os = "macos")]
+const LEGACY_SERVICE_INSTALL_NAME: &str = "clash-verge-service-install";
+#[cfg(target_os = "macos")]
+const LEGACY_SERVICE_UNINSTALL_NAME: &str = "clash-verge-service-uninstall";
+
+#[cfg(target_os = "macos")]
 fn prepare_macos_service_binaries() -> Result<MacosServiceBinaries> {
     let source_binary = dirs::service_path()?;
     let source_install = source_binary.with_file_name(dirs::SERVICE_INSTALL_NAME);
@@ -339,10 +346,16 @@ fn prepare_macos_service_binaries() -> Result<MacosServiceBinaries> {
     let staged_binary = stage_dir.join(dirs::SERVICE_BINARY_NAME);
     let staged_install = stage_dir.join(dirs::SERVICE_INSTALL_NAME);
     let staged_uninstall = stage_dir.join(dirs::SERVICE_UNINSTALL_NAME);
+    let staged_legacy_binary = stage_dir.join(LEGACY_SERVICE_BINARY_NAME);
+    let staged_legacy_install = stage_dir.join(LEGACY_SERVICE_INSTALL_NAME);
+    let staged_legacy_uninstall = stage_dir.join(LEGACY_SERVICE_UNINSTALL_NAME);
 
     copy_macos_service_binary(&source_binary, &staged_binary)?;
     copy_macos_service_binary(&source_install, &staged_install)?;
     copy_macos_service_binary(&source_uninstall, &staged_uninstall)?;
+    copy_macos_service_binary(&source_binary, &staged_legacy_binary)?;
+    copy_macos_service_binary(&source_install, &staged_legacy_install)?;
+    copy_macos_service_binary(&source_uninstall, &staged_legacy_uninstall)?;
 
     Ok(MacosServiceBinaries {
         install_path: staged_install,
