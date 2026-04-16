@@ -18,7 +18,7 @@ use std::{
 };
 use tokio::sync::Mutex;
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
 use std::fs;
 #[cfg(target_os = "macos")]
 use std::os::unix::fs::PermissionsExt as _;
@@ -45,8 +45,8 @@ fn uninstall_service() -> Result<()> {
     use runas::Command as RunasCommand;
     use std::os::windows::process::CommandExt as _;
 
-    let binary_path = dirs::service_path()?;
-    let uninstall_path = binary_path.with_file_name(format!("{}.exe", dirs::SERVICE_UNINSTALL_NAME));
+    let staged = prepare_windows_service_binaries()?;
+    let uninstall_path = staged.uninstall_path;
 
     if !uninstall_path.exists() {
         bail!(format!("uninstaller not found: {uninstall_path:?}"));
@@ -78,8 +78,8 @@ fn install_service() -> Result<()> {
     use runas::Command as RunasCommand;
     use std::os::windows::process::CommandExt as _;
 
-    let binary_path = dirs::service_path()?;
-    let install_path = binary_path.with_file_name(format!("{}.exe", dirs::SERVICE_INSTALL_NAME));
+    let staged = prepare_windows_service_binaries()?;
+    let install_path = staged.install_path;
 
     if !install_path.exists() {
         bail!(format!("installer not found: {install_path:?}"));
@@ -116,11 +116,76 @@ fn install_service() -> Result<()> {
     Ok(())
 }
 
+#[cfg(target_os = "windows")]
+struct WindowsServiceBinaries {
+    install_path: PathBuf,
+    uninstall_path: PathBuf,
+}
+
+#[cfg(target_os = "windows")]
+const LEGACY_SERVICE_BINARY_NAME_WINDOWS: &str = "clash-verge-service.exe";
+#[cfg(target_os = "windows")]
+const LEGACY_SERVICE_INSTALL_NAME_WINDOWS: &str = "clash-verge-service-install.exe";
+#[cfg(target_os = "windows")]
+const LEGACY_SERVICE_UNINSTALL_NAME_WINDOWS: &str = "clash-verge-service-uninstall.exe";
+
+#[cfg(target_os = "windows")]
+fn prepare_windows_service_binaries() -> Result<WindowsServiceBinaries> {
+    let source_binary = dirs::service_path()?;
+    let source_install =
+        source_binary.with_file_name(format!("{}.exe", dirs::SERVICE_INSTALL_NAME));
+    let source_uninstall =
+        source_binary.with_file_name(format!("{}.exe", dirs::SERVICE_UNINSTALL_NAME));
+
+    for path in [&source_binary, &source_install, &source_uninstall] {
+        if !path.exists() {
+            bail!(format!("service binary not found: {path:?}"));
+        }
+    }
+
+    let stage_dir = dirs::app_home_dir()?.join("service-bin");
+    fs::create_dir_all(&stage_dir)
+        .with_context(|| format!("failed to create service staging dir: {stage_dir:?}"))?;
+
+    let staged_binary = stage_dir.join(source_binary.file_name().unwrap());
+    let staged_install = stage_dir.join(source_install.file_name().unwrap());
+    let staged_uninstall = stage_dir.join(source_uninstall.file_name().unwrap());
+    let staged_legacy_binary = stage_dir.join(LEGACY_SERVICE_BINARY_NAME_WINDOWS);
+    let staged_legacy_install = stage_dir.join(LEGACY_SERVICE_INSTALL_NAME_WINDOWS);
+    let staged_legacy_uninstall = stage_dir.join(LEGACY_SERVICE_UNINSTALL_NAME_WINDOWS);
+
+    copy_windows_service_binary(&source_binary, &staged_binary)?;
+    copy_windows_service_binary(&source_install, &staged_install)?;
+    copy_windows_service_binary(&source_uninstall, &staged_uninstall)?;
+    copy_windows_service_binary(&source_binary, &staged_legacy_binary)?;
+    copy_windows_service_binary(&source_install, &staged_legacy_install)?;
+    copy_windows_service_binary(&source_uninstall, &staged_legacy_uninstall)?;
+
+    Ok(WindowsServiceBinaries {
+        install_path: staged_install,
+        uninstall_path: staged_uninstall,
+    })
+}
+
+#[cfg(target_os = "windows")]
+fn copy_windows_service_binary(source: &Path, target: &Path) -> Result<()> {
+    if target.exists() {
+        fs::remove_file(target)
+            .with_context(|| format!("failed to remove stale staged binary: {target:?}"))?;
+    }
+
+    fs::copy(source, target)
+        .with_context(|| format!("failed to stage service binary from {source:?} to {target:?}"))?;
+
+    Ok(())
+}
+
 #[cfg(target_os = "linux")]
 fn uninstall_service() -> Result<()> {
     logging!(info, Type::Service, "uninstall service");
 
-    let uninstall_path = tauri::utils::platform::current_exe()?.with_file_name(dirs::SERVICE_UNINSTALL_NAME);
+    let staged = prepare_linux_service_binaries()?;
+    let uninstall_path = staged.uninstall_path;
 
     if !uninstall_path.exists() {
         bail!(format!("uninstaller not found: {uninstall_path:?}"));
@@ -176,7 +241,8 @@ fn uninstall_service() -> Result<()> {
 fn install_service() -> Result<()> {
     logging!(info, Type::Service, "install service");
 
-    let install_path = tauri::utils::platform::current_exe()?.with_file_name(dirs::SERVICE_INSTALL_NAME);
+    let staged = prepare_linux_service_binaries()?;
+    let install_path = staged.install_path;
 
     if !install_path.exists() {
         bail!(format!("installer not found: {install_path:?}"));
@@ -232,6 +298,87 @@ fn linux_running_as_root() -> bool {
     use tauri_plugin_clash_verge_sysinfo::is_current_app_handle_admin;
     let app_handle = handle::Handle::app_handle();
     is_current_app_handle_admin(app_handle)
+}
+
+#[cfg(target_os = "linux")]
+struct LinuxServiceBinaries {
+    install_path: PathBuf,
+    uninstall_path: PathBuf,
+}
+
+#[cfg(target_os = "linux")]
+const LEGACY_SERVICE_BINARY_NAME: &str = "clash-verge-service";
+#[cfg(target_os = "linux")]
+const LEGACY_SERVICE_INSTALL_NAME: &str = "clash-verge-service-install";
+#[cfg(target_os = "linux")]
+const LEGACY_SERVICE_UNINSTALL_NAME: &str = "clash-verge-service-uninstall";
+
+#[cfg(target_os = "linux")]
+fn prepare_linux_service_binaries() -> Result<LinuxServiceBinaries> {
+    let current_exe = tauri::utils::platform::current_exe()?;
+    let current_dir = current_exe
+        .parent()
+        .ok_or_else(|| anyhow!("failed to get current exe directory"))?;
+
+    let source_binary = current_dir.join(dirs::SERVICE_BINARY_NAME);
+    let source_install = current_dir.join(dirs::SERVICE_INSTALL_NAME);
+    let source_uninstall = current_dir.join(dirs::SERVICE_UNINSTALL_NAME);
+
+    for path in [&source_binary, &source_install, &source_uninstall] {
+        if !path.exists() {
+            bail!(format!("service binary not found: {path:?}"));
+        }
+    }
+
+    let stage_dir = dirs::app_home_dir()?.join("service-bin");
+    fs::create_dir_all(&stage_dir)
+        .with_context(|| format!("failed to create service staging dir: {stage_dir:?}"))?;
+
+    let staged_binary = stage_dir.join(dirs::SERVICE_BINARY_NAME);
+    let staged_install = stage_dir.join(dirs::SERVICE_INSTALL_NAME);
+    let staged_uninstall = stage_dir.join(dirs::SERVICE_UNINSTALL_NAME);
+    let staged_legacy_binary = stage_dir.join(LEGACY_SERVICE_BINARY_NAME);
+    let staged_legacy_install = stage_dir.join(LEGACY_SERVICE_INSTALL_NAME);
+    let staged_legacy_uninstall = stage_dir.join(LEGACY_SERVICE_UNINSTALL_NAME);
+
+    copy_linux_service_binary(&source_binary, &staged_binary)?;
+    copy_linux_service_binary(&source_install, &staged_install)?;
+    copy_linux_service_binary(&source_uninstall, &staged_uninstall)?;
+    copy_linux_service_binary(&source_binary, &staged_legacy_binary)?;
+    copy_linux_service_binary(&source_install, &staged_legacy_install)?;
+    copy_linux_service_binary(&source_uninstall, &staged_legacy_uninstall)?;
+
+    Ok(LinuxServiceBinaries {
+        install_path: staged_install,
+        uninstall_path: staged_uninstall,
+    })
+}
+
+#[cfg(target_os = "linux")]
+fn copy_linux_service_binary(source: &Path, target: &Path) -> Result<()> {
+    if target.exists() {
+        fs::remove_file(target)
+            .with_context(|| format!("failed to remove stale staged binary: {target:?}"))?;
+    }
+
+    fs::copy(source, target)
+        .with_context(|| format!("failed to stage service binary from {source:?} to {target:?}"))?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        let metadata = fs::metadata(target)
+            .with_context(|| format!("failed to read metadata for {target:?}"))?;
+        let mut permissions = metadata.permissions();
+        let mode = permissions.mode();
+        if mode & 0o111 != 0o111 {
+            permissions.set_mode(mode | 0o755);
+            fs::set_permissions(target, permissions)
+                .with_context(|| format!("failed to set executable permission for {target:?}"))?;
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg(target_os = "macos")]
