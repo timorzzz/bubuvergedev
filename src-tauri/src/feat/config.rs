@@ -8,6 +8,7 @@ use bitflags::bitflags;
 use clash_verge_draft::SharedDraft;
 use clash_verge_logging::{Type, logging, logging_error};
 use serde_yaml_ng::Mapping;
+use std::time::Duration;
 
 /// Patch Clash configuration
 pub async fn patch_clash(patch: &Mapping) -> Result<()> {
@@ -198,8 +199,26 @@ fn determine_update_flags(patch: &IVerge) -> UpdateFlags {
     update_flags
 }
 
+#[cfg(target_os = "windows")]
+fn schedule_windows_tray_menu_refresh_for_tun() {
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(1200)).await;
+        logging_error!(Type::Tray, tray::Tray::global().update_menu().await);
+        logging_error!(Type::Tray, tray::Tray::global().update_tooltip().await);
+    });
+}
+
 #[allow(clippy::cognitive_complexity)]
 async fn process_terminated_flags(update_flags: UpdateFlags, patch: &IVerge) -> Result<()> {
+    #[cfg(target_os = "windows")]
+    let mut update_flags = update_flags;
+
+    #[cfg(target_os = "windows")]
+    if patch.enable_tun_mode.is_some() {
+        update_flags.remove(UpdateFlags::SYSTRAY_MENU);
+        schedule_windows_tray_menu_refresh_for_tun();
+    }
+
     // Process updates based on flags
     if update_flags.contains(UpdateFlags::RESTART_CORE) {
         Config::generate().await?;

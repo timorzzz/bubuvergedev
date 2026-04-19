@@ -132,10 +132,8 @@ const LEGACY_SERVICE_UNINSTALL_NAME_WINDOWS: &str = "clash-verge-service-uninsta
 #[cfg(target_os = "windows")]
 fn prepare_windows_service_binaries() -> Result<WindowsServiceBinaries> {
     let source_binary = dirs::service_path()?;
-    let source_install =
-        source_binary.with_file_name(format!("{}.exe", dirs::SERVICE_INSTALL_NAME));
-    let source_uninstall =
-        source_binary.with_file_name(format!("{}.exe", dirs::SERVICE_UNINSTALL_NAME));
+    let source_install = source_binary.with_file_name(format!("{}.exe", dirs::SERVICE_INSTALL_NAME));
+    let source_uninstall = source_binary.with_file_name(format!("{}.exe", dirs::SERVICE_UNINSTALL_NAME));
 
     for path in [&source_binary, &source_install, &source_uninstall] {
         if !path.exists() {
@@ -144,8 +142,7 @@ fn prepare_windows_service_binaries() -> Result<WindowsServiceBinaries> {
     }
 
     let stage_dir = dirs::app_home_dir()?.join("service-bin");
-    fs::create_dir_all(&stage_dir)
-        .with_context(|| format!("failed to create service staging dir: {stage_dir:?}"))?;
+    fs::create_dir_all(&stage_dir).with_context(|| format!("failed to create service staging dir: {stage_dir:?}"))?;
 
     let staged_binary = stage_dir.join(source_binary.file_name().unwrap());
     let staged_install = stage_dir.join(source_install.file_name().unwrap());
@@ -170,8 +167,7 @@ fn prepare_windows_service_binaries() -> Result<WindowsServiceBinaries> {
 #[cfg(target_os = "windows")]
 fn copy_windows_service_binary(source: &Path, target: &Path) -> Result<()> {
     if target.exists() {
-        fs::remove_file(target)
-            .with_context(|| format!("failed to remove stale staged binary: {target:?}"))?;
+        fs::remove_file(target).with_context(|| format!("failed to remove stale staged binary: {target:?}"))?;
     }
 
     fs::copy(source, target)
@@ -331,8 +327,7 @@ fn prepare_linux_service_binaries() -> Result<LinuxServiceBinaries> {
     }
 
     let stage_dir = dirs::app_home_dir()?.join("service-bin");
-    fs::create_dir_all(&stage_dir)
-        .with_context(|| format!("failed to create service staging dir: {stage_dir:?}"))?;
+    fs::create_dir_all(&stage_dir).with_context(|| format!("failed to create service staging dir: {stage_dir:?}"))?;
 
     let staged_binary = stage_dir.join(dirs::SERVICE_BINARY_NAME);
     let staged_install = stage_dir.join(dirs::SERVICE_INSTALL_NAME);
@@ -357,8 +352,7 @@ fn prepare_linux_service_binaries() -> Result<LinuxServiceBinaries> {
 #[cfg(target_os = "linux")]
 fn copy_linux_service_binary(source: &Path, target: &Path) -> Result<()> {
     if target.exists() {
-        fs::remove_file(target)
-            .with_context(|| format!("failed to remove stale staged binary: {target:?}"))?;
+        fs::remove_file(target).with_context(|| format!("failed to remove stale staged binary: {target:?}"))?;
     }
 
     fs::copy(source, target)
@@ -367,8 +361,7 @@ fn copy_linux_service_binary(source: &Path, target: &Path) -> Result<()> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt as _;
-        let metadata = fs::metadata(target)
-            .with_context(|| format!("failed to read metadata for {target:?}"))?;
+        let metadata = fs::metadata(target).with_context(|| format!("failed to read metadata for {target:?}"))?;
         let mut permissions = metadata.permissions();
         let mode = permissions.mode();
         if mode & 0o111 != 0o111 {
@@ -627,7 +620,7 @@ pub(super) async fn get_clash_logs_by_service() -> Result<Vec<CompactString>> {
 }
 
 /// 通过服务停止core
-pub(super) async fn stop_core_by_service() -> Result<()> {
+pub(crate) async fn stop_core_by_service() -> Result<()> {
     logging!(info, Type::Service, "通过服务停止核心 (IPC)");
 
     let response = clash_verge_service_ipc::stop_clash()

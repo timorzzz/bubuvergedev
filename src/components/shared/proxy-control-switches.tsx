@@ -154,8 +154,19 @@ const ProxyControlSwitches = ({
       showErrorNotice(msgKey)
       throw new Error(t(msgKey))
     }
-    mutateVerge({ ...verge, enable_tun_mode: value }, false)
-    await patchVerge({ enable_tun_mode: value })
+    const nextPatch =
+      value && verge?.enable_system_proxy
+        ? { enable_tun_mode: value, enable_system_proxy: false }
+        : { enable_tun_mode: value }
+
+    mutateVerge(
+      {
+        ...verge,
+        ...nextPatch,
+      },
+      false,
+    )
+    await patchVerge(nextPatch)
   }
 
   const onInstallService = useLockFn(async () => {

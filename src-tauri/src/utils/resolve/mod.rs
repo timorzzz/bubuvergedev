@@ -56,6 +56,7 @@ pub fn resolve_setup_async() {
         init_window().await;
 
         let core_init = AsyncHandler::spawn(|| async {
+            reset_stale_proxy_and_tun_state().await;
             init_service_manager().await;
             init_core_manager().await;
             init_system_proxy().await;
@@ -196,25 +197,52 @@ pub(super) async fn init_core_manager() {
 }
 
 pub(super) async fn init_system_proxy() {
-    let system_proxy_enabled = Config::verge().await.latest_arc().enable_system_proxy.unwrap_or(false);
+    logging_error!(Type::Setup, sysopt::Sysopt::global().update_sysproxy().await);
+}
 
-    if system_proxy_enabled {
+pub(super) async fn reset_stale_proxy_and_tun_state() {
+    let verge = Config::verge().await.latest_arc();
+    let system_proxy_enabled = verge.enable_system_proxy.unwrap_or(false);
+    let tun_enabled = verge.enable_tun_mode.unwrap_or(false);
+    let preserve_startup_proxy = verge.enable_auto_launch.unwrap_or(false) && (system_proxy_enabled || tun_enabled);
+
+    if !(system_proxy_enabled || tun_enabled) {
+        return;
+    }
+
+    logging!(
+        info,
+        Type::Setup,
+        "Detected persisted proxy/tun state on startup, clearing stale runtime state first"
+    );
+
+    logging_error!(Type::Setup, sysopt::Sysopt::global().reset_sysproxy().await);
+
+    if tun_enabled {
+        if crate::core::service::is_service_ipc_path_exists() {
+            logging_error!(Type::Setup, crate::core::service::stop_core_by_service().await);
+        }
+
+        #[cfg(target_os = "macos")]
+        logging_error!(Type::Setup, dns::restore_public_dns().await);
+    }
+
+    if preserve_startup_proxy {
         logging!(
             info,
             Type::Setup,
-            "Detected persisted system proxy state on startup, clearing stale proxy first"
+            "Preserving persisted proxy/tun preference because auto launch with startup proxy is enabled"
         );
-        logging_error!(Type::Setup, sysopt::Sysopt::global().reset_sysproxy().await);
-
-        Config::verge()
-            .await
-            .edit_draft(|draft| draft.enable_system_proxy = Some(false));
-        Config::verge().await.apply();
-        logging_error!(Type::Setup, Config::verge().await.data_arc().save_file().await);
+    } else {
+        let verge = Config::verge().await;
+        verge.edit_draft(|draft| {
+            draft.enable_system_proxy = Some(false);
+            draft.enable_tun_mode = Some(false);
+        });
+        verge.apply();
+        logging_error!(Type::Setup, verge.data_arc().save_file().await);
         Handle::refresh_verge();
     }
-
-    logging_error!(Type::Setup, sysopt::Sysopt::global().update_sysproxy().await);
 }
 
 pub(super) async fn init_system_proxy_guard() {

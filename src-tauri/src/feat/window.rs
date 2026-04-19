@@ -17,20 +17,19 @@ pub async fn open_or_close_dashboard() {
 }
 
 pub async fn quit() {
-    logging!(debug, Type::System, "启动退出流程");
-    // 设置退出标志
+    logging!(debug, Type::System, "starting quit flow");
     handle::Handle::global().set_is_exiting();
 
     utils::server::shutdown_embedded_server();
-    Config::apply_all_and_save_file().await;
 
-    logging!(info, Type::System, "开始异步清理资源");
+    logging!(info, Type::System, "starting async cleanup");
     let cleanup_result = clean_async().await;
+    persist_proxy_and_tun_disabled().await;
 
     logging!(
         info,
         Type::System,
-        "资源清理完成，退出代码: {}",
+        "cleanup finished, exit code: {}",
         if cleanup_result { 0 } else { 1 }
     );
 
@@ -38,42 +37,59 @@ pub async fn quit() {
     app_handle.exit(if cleanup_result { 0 } else { 1 });
 }
 
+async fn persist_proxy_and_tun_disabled() {
+    let latest = Config::verge().await.latest_arc();
+    let should_preserve_startup_proxy = latest.enable_auto_launch.unwrap_or(false)
+        && (latest.enable_system_proxy.unwrap_or(false) || latest.enable_tun_mode.unwrap_or(false));
+
+    if should_preserve_startup_proxy {
+        logging!(
+            info,
+            Type::System,
+            "preserving persisted proxy/tun state because auto launch with startup proxy is enabled"
+        );
+        Config::apply_all_and_save_file().await;
+        return;
+    }
+
+    let verge = Config::verge().await;
+    verge.edit_draft(|draft| {
+        draft.enable_system_proxy = Some(false);
+        draft.enable_tun_mode = Some(false);
+    });
+
+    Config::apply_all_and_save_file().await;
+    logging!(info, Type::System, "persisted system proxy and tun mode as disabled");
+}
+
 pub async fn clean_async() -> bool {
-    logging!(info, Type::System, "开始执行异步清理操作...");
+    logging!(info, Type::System, "starting async cleanup tasks");
 
-    // 重置系统代理
     let proxy_task = tokio::task::spawn(async {
-        let sys_proxy_enabled = Config::verge().await.data_arc().enable_system_proxy.unwrap_or(false);
-        if !sys_proxy_enabled {
-            logging!(info, Type::Window, "系统代理未启用，跳过重置");
-            return true;
-        }
-
-        logging!(info, Type::Window, "开始重置系统代理...");
+        logging!(info, Type::Window, "resetting system proxy");
         match timeout(Duration::from_millis(1500), sysopt::Sysopt::global().reset_sysproxy()).await {
             Ok(Ok(_)) => {
-                logging!(info, Type::Window, "系统代理已重置");
+                logging!(info, Type::Window, "system proxy reset completed");
                 true
             }
             Ok(Err(e)) => {
-                logging!(warn, Type::Window, "Warning: 重置系统代理失败: {e}");
+                logging!(warn, Type::Window, "warning: failed to reset system proxy: {e}");
                 false
             }
             Err(_) => {
-                logging!(warn, Type::Window, "Warning: 重置系统代理超时，继续退出");
+                logging!(warn, Type::Window, "warning: resetting system proxy timed out");
                 false
             }
         }
     });
 
-    // 关闭 Tun 模式 + 停止核心服务
     let core_task = tokio::task::spawn(async {
         logging!(info, Type::System, "disable tun");
         let tun_enabled = Config::verge().await.data_arc().enable_tun_mode.unwrap_or(false);
         if tun_enabled {
             let disable_tun = serde_json::json!({ "tun": { "enable": false } });
 
-            logging!(info, Type::System, "send disable tun request to mihomo");
+            logging!(info, Type::System, "sending disable tun request to mihomo");
             match timeout(
                 Duration::from_millis(1000),
                 handle::Handle::mihomo().await.patch_base_config(&disable_tun),
@@ -81,17 +97,13 @@ pub async fn clean_async() -> bool {
             .await
             {
                 Ok(Ok(_)) => {
-                    logging!(info, Type::Window, "TUN模式已禁用");
+                    logging!(info, Type::Window, "tun mode disabled");
                 }
                 Ok(Err(e)) => {
-                    logging!(warn, Type::Window, "Warning: 禁用TUN模式失败: {e}");
+                    logging!(warn, Type::Window, "warning: failed to disable tun mode: {e}");
                 }
                 Err(_) => {
-                    logging!(
-                        warn,
-                        Type::Window,
-                        "Warning: 禁用TUN模式超时（可能系统正在关机），继续退出流程"
-                    );
+                    logging!(warn, Type::Window, "warning: disabling tun mode timed out");
                 }
             }
         }
@@ -104,21 +116,16 @@ pub async fn clean_async() -> bool {
         logging!(info, Type::System, "stop core");
         match timeout(stop_timeout, CoreManager::global().stop_core()).await {
             Ok(_) => {
-                logging!(info, Type::Window, "core已停止");
+                logging!(info, Type::Window, "core stopped");
                 true
             }
             Err(_) => {
-                logging!(
-                    warn,
-                    Type::Window,
-                    "Warning: 停止core超时（可能系统正在关机），继续退出"
-                );
+                logging!(warn, Type::Window, "warning: stopping core timed out");
                 false
             }
         }
     });
 
-    // DNS恢复（仅macOS）
     let dns_task = tokio::task::spawn(async {
         #[cfg(target_os = "macos")]
         match timeout(
@@ -128,11 +135,11 @@ pub async fn clean_async() -> bool {
         .await
         {
             Ok(_) => {
-                logging!(info, Type::Window, "DNS设置已恢复");
+                logging!(info, Type::Window, "dns settings restored");
                 true
             }
             Err(_) => {
-                logging!(warn, Type::Window, "Warning: 恢复DNS设置超时");
+                logging!(warn, Type::Window, "warning: restoring dns settings timed out");
                 false
             }
         }
@@ -140,7 +147,6 @@ pub async fn clean_async() -> bool {
         true
     });
 
-    // 并行执行清理任务
     let (proxy_result, core_result, dns_result) = tokio::join!(proxy_task, core_task, dns_task);
 
     let proxy_success = proxy_result.unwrap_or_default();
@@ -152,7 +158,7 @@ pub async fn clean_async() -> bool {
     logging!(
         info,
         Type::System,
-        "异步关闭操作完成 - 代理: {}, 核心: {}, DNS: {}, 总体: {}",
+        "async cleanup finished - proxy: {}, core: {}, dns: {}, overall: {}",
         proxy_success,
         core_success,
         dns_success,

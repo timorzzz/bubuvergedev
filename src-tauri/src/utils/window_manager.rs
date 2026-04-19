@@ -308,6 +308,19 @@ impl WindowManager {
                 return false;
             }
 
+            if let Some(window) = Self::get_main_window() {
+                let _ = apply_fixed_startup_window_size(&window);
+                let _ = window.set_resizable(false);
+                logging!(info, Type::Window, "主窗口已存在，复用现有窗口实例");
+
+                #[cfg(target_os = "macos")]
+                {
+                    handle::Handle::global().set_activation_policy_regular();
+                }
+
+                return true;
+            }
+
             match build_new_window().await {
                 Ok(window) => {
                     let _ = apply_fixed_startup_window_size(&window);

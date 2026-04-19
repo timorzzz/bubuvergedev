@@ -381,8 +381,19 @@ const HomePage = () => {
         return
       }
 
-    mutateVerge({ ...verge, enable_tun_mode: target }, false)
-    await patchVerge({ enable_tun_mode: target })
+    const nextPatch =
+      target && verge?.enable_system_proxy
+        ? { enable_tun_mode: target, enable_system_proxy: false }
+        : { enable_tun_mode: target }
+
+    mutateVerge(
+      {
+        ...verge,
+        ...nextPatch,
+      },
+      false,
+    )
+    await patchVerge(nextPatch)
   })
 
   const onSelectRoute = useLockFn(async (item: HomeRouteOption) => {

@@ -381,10 +381,20 @@ pub fn run() {
         pub fn handle_main_window_scale_changed(app_handle: &AppHandle) {
             if let Some(window) = app_handle.get_webview_window("main") {
                 if let Err(err) = crate::utils::resolve::window::apply_fixed_startup_window_size(&window) {
-                    logging!(warn, Type::Window, "Failed to re-apply fixed window size after DPI change: {}", err);
+                    logging!(
+                        warn,
+                        Type::Window,
+                        "Failed to re-apply fixed window size after DPI change: {}",
+                        err
+                    );
                 }
                 if let Err(err) = window.set_resizable(false) {
-                    logging!(warn, Type::Window, "Failed to lock main window after DPI change: {}", err);
+                    logging!(
+                        warn,
+                        Type::Window,
+                        "Failed to lock main window after DPI change: {}",
+                        err
+                    );
                 }
             }
         }
