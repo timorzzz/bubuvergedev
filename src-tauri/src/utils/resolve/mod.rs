@@ -224,7 +224,9 @@ pub(super) async fn reset_stale_proxy_and_tun_state() {
         }
 
         #[cfg(target_os = "macos")]
-        logging_error!(Type::Setup, dns::restore_public_dns().await);
+        if let Err(err) = dns::restore_public_dns().await {
+            logging!(error, Type::Setup, "Failed to restore public DNS on startup cleanup: {err}");
+        }
     }
 
     if preserve_startup_proxy {

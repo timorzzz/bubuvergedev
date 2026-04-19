@@ -8,6 +8,7 @@ use bitflags::bitflags;
 use clash_verge_draft::SharedDraft;
 use clash_verge_logging::{Type, logging, logging_error};
 use serde_yaml_ng::Mapping;
+#[cfg(target_os = "windows")]
 use std::time::Duration;
 
 /// Patch Clash configuration

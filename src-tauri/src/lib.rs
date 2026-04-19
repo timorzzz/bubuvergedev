@@ -298,8 +298,6 @@ pub fn run() {
         use clash_verge_logging::{Type, logging};
         use tauri::AppHandle;
         use tauri::Manager as _;
-        #[cfg(target_os = "macos")]
-        use tauri::Manager as _;
 
         pub fn handle_ready_resumed(_app_handle: &AppHandle) {
             if handle::Handle::global().is_exiting() {
