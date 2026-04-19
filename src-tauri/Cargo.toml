@@ -1,6 +1,6 @@
 [package]
 name = "bluelayer"
-version = "1.0.4"
+version = "1.0.5"
 description = "Bluelayer desktop client"
 authors = ["zzzgydi", "Tunglies", "wonfen", "MystiPanda"]
 license = "GPL-3.0-only"

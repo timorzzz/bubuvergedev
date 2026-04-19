@@ -297,6 +297,7 @@ pub fn run() {
         };
         use clash_verge_logging::{Type, logging};
         use tauri::AppHandle;
+        use tauri::Manager as _;
         #[cfg(target_os = "macos")]
         use tauri::Manager as _;
 
@@ -377,6 +378,17 @@ pub fn run() {
             });
         }
 
+        pub fn handle_main_window_scale_changed(app_handle: &AppHandle) {
+            if let Some(window) = app_handle.get_webview_window("main") {
+                if let Err(err) = crate::utils::resolve::window::apply_fixed_startup_window_size(&window) {
+                    logging!(warn, Type::Window, "Failed to re-apply fixed window size after DPI change: {}", err);
+                }
+                if let Err(err) = window.set_resizable(false) {
+                    logging!(warn, Type::Window, "Failed to lock main window after DPI change: {}", err);
+                }
+            }
+        }
+
         #[cfg(target_os = "macos")]
         pub fn handle_window_destroyed() {
             use crate::core::hotkey::SystemHotkey;
@@ -447,6 +459,10 @@ pub fn run() {
             }
             tauri::WindowEvent::Focused(focused) => {
                 event_handlers::handle_window_focus(focused);
+            }
+            #[cfg(target_os = "windows")]
+            tauri::WindowEvent::ScaleFactorChanged { .. } => {
+                event_handlers::handle_main_window_scale_changed(app_handle);
             }
             #[cfg(target_os = "macos")]
             tauri::WindowEvent::Destroyed => {

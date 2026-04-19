@@ -112,6 +112,8 @@ const SortableNavMenuItem = ({ item, label }: SortableNavMenuItemProps) => {
 
 dayjs.extend(relativeTime)
 
+const displayVersion = String(appVersion).split('+')[0]
+
 const OS = getSystem()
 
 const Layout = () => {
@@ -517,7 +519,7 @@ const Layout = () => {
               </MenuItem>
             </Menu>
 
-            <div className="the-version">v{appVersion}</div>
+            <div className="the-version">v{displayVersion}</div>
           </div>
 
           <div className="layout-content__right">

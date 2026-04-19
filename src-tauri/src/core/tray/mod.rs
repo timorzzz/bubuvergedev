@@ -327,15 +327,45 @@ impl Tray {
 
         let icon_bytes = TrayState::get_tray_icon(&verge).await.1;
         let icon = tauri::image::Image::from_bytes(&icon_bytes)?;
+        let system_proxy = verge.enable_system_proxy.as_ref().unwrap_or(&false);
+        let tun_mode = verge.enable_tun_mode.as_ref().unwrap_or(&false);
+        let tun_mode_available =
+            is_current_app_handle_admin(app_handle) || service::is_service_available().await.is_ok();
+        let mode = {
+            Config::clash()
+                .await
+                .latest_arc()
+                .0
+                .get("mode")
+                .map(|val| val.as_str().unwrap_or("rule"))
+                .unwrap_or("rule")
+                .to_owned()
+        };
+        let is_lightweight_mode = is_in_lightweight_mode();
+        let initial_menu = create_tray_menu(
+            app_handle,
+            Some(mode.as_str()),
+            *system_proxy,
+            *tun_mode,
+            tun_mode_available,
+            is_lightweight_mode,
+        )
+        .await?;
 
         #[cfg(target_os = "linux")]
-        let builder = TrayIconBuilder::with_id("main").icon(icon).icon_as_template(false);
+        let builder = TrayIconBuilder::with_id("main")
+            .icon(icon)
+            .icon_as_template(false)
+            .menu(&initial_menu);
 
         #[cfg(any(target_os = "macos", target_os = "windows"))]
         let show_menu_on_left_click = verge.tray_event.as_ref().is_some_and(|v| v == "tray_menu");
 
         #[cfg(not(target_os = "linux"))]
-        let mut builder = TrayIconBuilder::with_id("main").icon(icon).icon_as_template(false);
+        let mut builder = TrayIconBuilder::with_id("main")
+            .icon(icon)
+            .icon_as_template(false)
+            .menu(&initial_menu);
         #[cfg(target_os = "macos")]
         {
             let is_monochrome = verge.tray_icon.as_ref().is_none_or(|v| v == "monochrome");
@@ -752,9 +782,6 @@ fn on_tray_icon_event(_tray_icon: &TrayIcon, tray_event: TrayIconEvent) {
 }
 
 fn on_menu_event(_: &AppHandle, event: MenuEvent) {
-    if !Tray::global().should_handle_tray_click() {
-        return;
-    }
     if event.id.as_ref().is_empty() {
         return;
     }

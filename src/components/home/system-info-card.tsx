@@ -25,6 +25,8 @@ import { version as appVersion } from '@root/package.json'
 
 import { EnhancedCard } from './enhanced-card'
 
+const displayVersion = String(appVersion).split('+')[0]
+
 export const SystemInfoCard = () => {
   const { t } = useTranslation()
   const { verge, patchVerge } = useVerge()
@@ -299,7 +301,7 @@ export const SystemInfoCard = () => {
             {t('home.components.systemInfo.fields.vergeVersion')}
           </Typography>
           <Typography variant="body2" fontWeight="medium">
-            v{appVersion}
+            v{displayVersion}
           </Typography>
         </Stack>
       </Stack>

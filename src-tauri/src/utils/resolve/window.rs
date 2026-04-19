@@ -24,6 +24,17 @@ pub fn apply_fixed_startup_window_size(window: &WebviewWindow) -> tauri::Result<
     window.set_min_size(Some(fixed_size.clone()))?;
     window.set_max_size(Some(fixed_size))?;
     window.center()?;
+    normalize_windows_webview_scale(window)?;
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn normalize_windows_webview_scale(window: &WebviewWindow) -> tauri::Result<()> {
+    window.set_zoom(1.0)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn normalize_windows_webview_scale(_: &WebviewWindow) -> tauri::Result<()> {
     Ok(())
 }
 
