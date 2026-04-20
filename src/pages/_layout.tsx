@@ -371,7 +371,28 @@ const Layout = () => {
         disableCancel
         onOk={handleClosePcAlert}
         onClose={handleClosePcAlert}
-        contentSx={{ minWidth: 360, maxWidth: 520 }}
+        contentSx={{
+          minWidth: 360,
+          maxWidth: 520,
+          maxHeight: '56vh',
+          '& *': {
+            maxWidth: '100%',
+            boxSizing: 'border-box',
+          },
+          '& p, & div, & span, & li, & a, & strong, & em': {
+            fontSize: '14px !important',
+            lineHeight: '1.7 !important',
+          },
+          '& h1, & h2, & h3, & h4, & h5, & h6': {
+            fontSize: '18px !important',
+            lineHeight: '1.4 !important',
+            margin: '0 0 8px !important',
+          },
+          '& img': {
+            maxWidth: '100%',
+            height: 'auto',
+          },
+        }}
       >
         <div
           dangerouslySetInnerHTML={{ __html: pcAlert?.content || '' }}
@@ -425,8 +446,11 @@ const Layout = () => {
         sx={{
           bgcolor: 'background.default',
           borderRadius: 0,
-          width: '100vw',
-          height: '100vh',
+          width: '100%',
+          height: '100%',
+          maxWidth: '100%',
+          maxHeight: '100%',
+          overflow: 'hidden',
         }}
       >
         {customTitlebar}

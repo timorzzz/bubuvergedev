@@ -30,12 +30,27 @@ pub fn apply_fixed_startup_window_size(window: &WebviewWindow) -> tauri::Result<
 
 #[cfg(target_os = "windows")]
 fn normalize_windows_webview_scale(window: &WebviewWindow) -> tauri::Result<()> {
-    window.set_zoom(1.0)
+    window.set_zoom(get_windows_webview_zoom())
 }
 
 #[cfg(not(target_os = "windows"))]
 fn normalize_windows_webview_scale(_: &WebviewWindow) -> tauri::Result<()> {
     Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn get_windows_webview_zoom() -> f64 {
+    use winreg::{RegKey, enums::HKEY_CURRENT_USER};
+
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    let factor = hkcu
+        .open_subkey("SOFTWARE\\Microsoft\\Accessibility")
+        .ok()
+        .and_then(|key| key.get_value::<u32, _>("TextScaleFactor").ok())
+        .unwrap_or(100);
+
+    let normalized = factor.clamp(100, 225) as f64 / 100.0;
+    (1.0 / normalized).clamp(0.44, 1.0)
 }
 
 pub async fn build_new_window() -> Result<WebviewWindow, String> {

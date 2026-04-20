@@ -498,9 +498,9 @@ const HomePage = () => {
       full
       contentStyle={{ height: '100%', minHeight: 0, display: 'flex' }}
     >
-      <Box sx={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: '1fr 170px', gap: 1.2 }}>
-        <Box sx={{ background: '#f3f6fb', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          <Box sx={{ flex: 1, m: 1.2, background: '#ffffff', display: 'grid', gridTemplateRows: 'auto auto auto 1fr auto auto', px: 2.8, py: 2.1, position: 'relative', overflow: 'hidden' }}>
+      <Box sx={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 170px', gap: 1.2 }}>
+        <Box sx={{ background: '#f3f6fb', display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
+          <Box sx={{ flex: 1, m: 1.2, background: '#ffffff', display: 'grid', gridTemplateRows: 'auto auto auto 1fr auto auto', px: 2.8, py: 2.1, position: 'relative', overflowX: 'hidden', overflowY: 'auto', minWidth: 0 }}>
             <Box
               sx={{
                 alignSelf: 'center',
@@ -694,7 +694,7 @@ const HomePage = () => {
                 mt: 0.7,
               }}
             >
-              <Box sx={{ position: 'relative', width: 360, height: 220 }}>
+              <Box sx={{ position: 'relative', width: 'min(100%, 360px)', height: 220 }}>
                 <Box
                   component="svg"
                   viewBox="0 0 360 220"

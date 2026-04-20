@@ -53,10 +53,27 @@ export const BaseDialog: React.FC<Props> = ({
       open={open}
       onClose={onClose}
       disableEnforceFocus={disableEnforceFocus}
+      scroll="paper"
+      PaperProps={{
+        sx: {
+          width: 'min(520px, calc(100% - 24px))',
+          maxWidth: 'calc(100% - 24px)',
+          maxHeight: 'calc(100% - 24px)',
+          m: 1.5,
+        },
+      }}
     >
       <DialogTitle>{title}</DialogTitle>
 
-      <DialogContent sx={contentSx}>{children}</DialogContent>
+      <DialogContent
+        sx={{
+          overflowY: 'auto',
+          maxHeight: 'calc(100vh - 170px)',
+          ...contentSx,
+        }}
+      >
+        {children}
+      </DialogContent>
 
       {!disableFooter && (
         <DialogActions>

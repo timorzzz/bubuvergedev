@@ -110,6 +110,8 @@ export const useCustomTheme = () => {
         },
         shadows: Array(25).fill('none') as Shadows,
         typography: {
+          htmlFontSize: 16,
+          fontSize: 14,
           fontFamily: setting.font_family
             ? `${setting.font_family}, ${dt.font_family}`
             : dt.font_family,
@@ -135,7 +137,11 @@ export const useCustomTheme = () => {
             default: dt.background_color,
           },
         },
-        typography: { fontFamily: dt.font_family },
+        typography: {
+          htmlFontSize: 16,
+          fontSize: 14,
+          fontFamily: dt.font_family,
+        },
       })
     }
 

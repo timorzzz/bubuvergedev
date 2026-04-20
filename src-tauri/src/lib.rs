@@ -347,6 +347,19 @@ pub fn run() {
                 let is_enable_global_hotkey = Config::verge().await.data_arc().enable_global_hotkey.unwrap_or(true);
 
                 if focused {
+                    #[cfg(target_os = "windows")]
+                    if let Some(window) = handle::Handle::app_handle().get_webview_window("main") {
+                        if let Err(err) = crate::utils::resolve::window::apply_fixed_startup_window_size(&window) {
+                            logging!(
+                                warn,
+                                Type::Window,
+                                "Failed to re-apply fixed window size after focus restore: {}",
+                                err
+                            );
+                        }
+                        let _ = window.set_resizable(false);
+                    }
+
                     #[cfg(target_os = "macos")]
                     {
                         use crate::core::hotkey::SystemHotkey;
