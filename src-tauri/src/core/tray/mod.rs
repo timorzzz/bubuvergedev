@@ -384,6 +384,40 @@ impl Tray {
                 .to_owned()
         };
         let is_lightweight_mode = is_in_lightweight_mode();
+
+        #[cfg(target_os = "windows")]
+        let initial_menu = match create_tray_menu(
+            app_handle,
+            Some(mode.as_str()),
+            *system_proxy,
+            *tun_mode,
+            tun_mode_available,
+            is_lightweight_mode,
+        )
+        .await
+        {
+            Ok(menu) => Some(menu),
+            Err(err) => {
+                logging!(
+                    warn,
+                    Type::Tray,
+                    "Failed to create full Windows tray menu, falling back to minimal menu: {err}"
+                );
+                match create_minimal_tray_menu(app_handle) {
+                    Ok(menu) => Some(menu),
+                    Err(menu_err) => {
+                        logging!(
+                            warn,
+                            Type::Tray,
+                            "Failed to create minimal Windows tray menu, creating icon without menu: {menu_err}"
+                        );
+                        None
+                    }
+                }
+            }
+        };
+
+        #[cfg(not(target_os = "windows"))]
         let initial_menu = create_tray_menu(
             app_handle,
             Some(mode.as_str()),
@@ -406,8 +440,20 @@ impl Tray {
         #[cfg(not(target_os = "linux"))]
         let mut builder = TrayIconBuilder::with_id("main")
             .icon(icon.clone())
-            .icon_as_template(false)
-            .menu(&initial_menu);
+            .icon_as_template(false);
+
+        #[cfg(target_os = "windows")]
+        {
+            if let Some(ref menu) = initial_menu {
+                builder = builder.menu(menu);
+            }
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            builder = builder.menu(&initial_menu);
+        }
+
         #[cfg(target_os = "macos")]
         {
             let is_monochrome = verge.tray_icon.as_ref().is_none_or(|v| v == "monochrome");
@@ -424,6 +470,21 @@ impl Tray {
         let tray = builder.build(app_handle)?;
         logging_error!(Type::Tray, tray.set_icon(Some(icon)));
         logging_error!(Type::Tray, tray.set_visible(true));
+        logging!(
+            info,
+            Type::Tray,
+            "System tray built, icon visible requested, menu_attached={}",
+            {
+                #[cfg(target_os = "windows")]
+                {
+                    initial_menu.is_some()
+                }
+                #[cfg(not(target_os = "windows"))]
+                {
+                    true
+                }
+            }
+        );
         tray.on_tray_icon_event(on_tray_icon_event);
         tray.on_menu_event(on_menu_event);
 
@@ -616,6 +677,22 @@ fn create_proxy_menu_item(
         (None, Vec::new())
     };
     Ok((proxies_submenu, inline_proxy_items))
+}
+
+fn create_minimal_tray_menu(app_handle: &AppHandle) -> Result<tauri::menu::Menu<Wry>> {
+    let open_window = &MenuItem::with_id(
+        app_handle,
+        MenuIds::DASHBOARD,
+        "Open Bluelayer",
+        true,
+        None::<&str>,
+    )?;
+    let quit = &MenuItem::with_id(app_handle, MenuIds::EXIT, "Exit", true, None::<&str>)?;
+    let separator = &PredefinedMenuItem::separator(app_handle)?;
+
+    Ok(tauri::menu::MenuBuilder::new(app_handle)
+        .items(&[open_window, separator, quit])
+        .build()?)
 }
 
 async fn create_tray_menu(
