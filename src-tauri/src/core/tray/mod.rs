@@ -680,13 +680,7 @@ fn create_proxy_menu_item(
 }
 
 fn create_minimal_tray_menu(app_handle: &AppHandle) -> Result<tauri::menu::Menu<Wry>> {
-    let open_window = &MenuItem::with_id(
-        app_handle,
-        MenuIds::DASHBOARD,
-        "Open Bluelayer",
-        true,
-        None::<&str>,
-    )?;
+    let open_window = &MenuItem::with_id(app_handle, MenuIds::DASHBOARD, "Open Bluelayer", true, None::<&str>)?;
     let quit = &MenuItem::with_id(app_handle, MenuIds::EXIT, "Exit", true, None::<&str>)?;
     let separator = &PredefinedMenuItem::separator(app_handle)?;
 
