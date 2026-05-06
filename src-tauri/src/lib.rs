@@ -349,7 +349,7 @@ pub fn run() {
                 if focused {
                     #[cfg(target_os = "windows")]
                     if let Some(window) = handle::Handle::app_handle().get_webview_window("main") {
-                        if let Err(err) = crate::utils::resolve::window::apply_fixed_startup_window_size(&window) {
+                        if let Err(err) = crate::utils::resolve::window::apply_fixed_window_size(&window) {
                             logging!(
                                 warn,
                                 Type::Window,
@@ -391,7 +391,7 @@ pub fn run() {
 
         pub fn handle_main_window_scale_changed(app_handle: &AppHandle) {
             if let Some(window) = app_handle.get_webview_window("main") {
-                if let Err(err) = crate::utils::resolve::window::apply_fixed_startup_window_size(&window) {
+                if let Err(err) = crate::utils::resolve::window::apply_fixed_window_size(&window) {
                     logging!(
                         warn,
                         Type::Window,

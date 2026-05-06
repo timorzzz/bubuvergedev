@@ -19,11 +19,16 @@ const DEFAULT_DECORATIONS: bool = false;
 const DEFAULT_DECORATIONS: bool = true;
 
 pub fn apply_fixed_startup_window_size(window: &WebviewWindow) -> tauri::Result<()> {
+    apply_fixed_window_size(window)?;
+    window.center()?;
+    Ok(())
+}
+
+pub fn apply_fixed_window_size(window: &WebviewWindow) -> tauri::Result<()> {
     let fixed_size = Size::Logical(LogicalSize::new(DEFAULT_WIDTH, DEFAULT_HEIGHT));
     window.set_size(fixed_size.clone())?;
     window.set_min_size(Some(fixed_size.clone()))?;
     window.set_max_size(Some(fixed_size))?;
-    window.center()?;
     normalize_windows_webview_scale(window)?;
     Ok(())
 }

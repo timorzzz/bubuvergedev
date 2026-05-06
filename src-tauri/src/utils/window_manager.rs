@@ -1,6 +1,6 @@
 use crate::{
     core::handle,
-    utils::resolve::window::{apply_fixed_startup_window_size, build_new_window},
+    utils::resolve::window::{apply_fixed_startup_window_size, apply_fixed_window_size, build_new_window},
 };
 use clash_verge_limiter::Limiter;
 use clash_verge_logging::{Type, logging};
@@ -150,7 +150,7 @@ impl WindowManager {
                     return WindowOperationResult::NoAction;
                 }
                 if let Some(window) = window {
-                    let _ = apply_fixed_startup_window_size(&window);
+                    let _ = apply_fixed_window_size(&window);
                     let _ = window.set_resizable(false);
                     Self::activate_window(&window)
                 } else {
@@ -225,7 +225,7 @@ impl WindowManager {
 
         let mut operations_successful = true;
 
-        if let Err(e) = apply_fixed_startup_window_size(window) {
+        if let Err(e) = apply_fixed_window_size(window) {
             logging!(warn, Type::Window, "固定窗口尺寸失败: {}", e);
             operations_successful = false;
         }
@@ -309,7 +309,7 @@ impl WindowManager {
             }
 
             if let Some(window) = Self::get_main_window() {
-                let _ = apply_fixed_startup_window_size(&window);
+                let _ = apply_fixed_window_size(&window);
                 let _ = window.set_resizable(false);
                 logging!(info, Type::Window, "主窗口已存在，复用现有窗口实例");
 
