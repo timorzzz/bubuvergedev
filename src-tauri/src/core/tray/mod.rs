@@ -99,7 +99,7 @@ impl TrayState {
         {
             let _ = verge;
             let _ = kind;
-            return (false, include_bytes!("../../../icons/icon.png").to_vec());
+            return (false, include_bytes!("../../../icons/32x32.png").to_vec());
         }
 
         #[cfg(target_os = "macos")]
@@ -115,18 +115,40 @@ impl TrayState {
 
     fn image_from_bytes(icon_bytes: &[u8]) -> Result<tauri::image::Image<'static>> {
         match tauri::image::Image::from_bytes(icon_bytes) {
-            Ok(icon) => Ok(icon),
+            Ok(icon) if Self::is_usable_tray_image(&icon) => Ok(icon),
+            Ok(icon) => {
+                logging!(
+                    warn,
+                    Type::Tray,
+                    "Tray icon image is not suitable ({}x{}), falling back to 32x32 app icon",
+                    icon.width(),
+                    icon.height()
+                );
+                Self::fallback_image()
+            }
             Err(err) => {
                 logging!(
                     warn,
                     Type::Tray,
-                    "Failed to decode tray icon, falling back to app icon: {err}"
+                    "Failed to decode tray icon, falling back to 32x32 app icon: {err}"
                 );
-                Ok(tauri::image::Image::from_bytes(include_bytes!(
-                    "../../../icons/icon.png"
-                ))?)
+                Self::fallback_image()
             }
         }
+    }
+
+    fn fallback_image() -> Result<tauri::image::Image<'static>> {
+        Ok(tauri::image::Image::from_bytes(include_bytes!(
+            "../../../icons/32x32.png"
+        ))?)
+    }
+
+    fn is_usable_tray_image(icon: &tauri::image::Image<'_>) -> bool {
+        icon.width() > 0
+            && icon.height() > 0
+            && icon.width() <= 256
+            && icon.height() <= 256
+            && icon.rgba().chunks_exact(4).any(|pixel| pixel[3] != 0)
     }
 }
 
@@ -260,6 +282,7 @@ impl Tray {
         let icon = TrayState::image_from_bytes(&icon_bytes)?;
 
         logging_error!(Type::Tray, tray.set_icon(Some(icon)));
+        logging_error!(Type::Tray, tray.set_visible(true));
 
         #[cfg(target_os = "macos")]
         {
@@ -373,7 +396,7 @@ impl Tray {
 
         #[cfg(target_os = "linux")]
         let builder = TrayIconBuilder::with_id("main")
-            .icon(icon)
+            .icon(icon.clone())
             .icon_as_template(false)
             .menu(&initial_menu);
 
@@ -382,7 +405,7 @@ impl Tray {
 
         #[cfg(not(target_os = "linux"))]
         let mut builder = TrayIconBuilder::with_id("main")
-            .icon(icon)
+            .icon(icon.clone())
             .icon_as_template(false)
             .menu(&initial_menu);
         #[cfg(target_os = "macos")]
@@ -399,9 +422,33 @@ impl Tray {
         }
 
         let tray = builder.build(app_handle)?;
+        logging_error!(Type::Tray, tray.set_icon(Some(icon)));
+        logging_error!(Type::Tray, tray.set_visible(true));
         tray.on_tray_icon_event(on_tray_icon_event);
         tray.on_menu_event(on_menu_event);
+
+        #[cfg(target_os = "windows")]
+        Self::schedule_windows_tray_icon_refresh(app_handle.clone());
+
         Ok(())
+    }
+
+    #[cfg(target_os = "windows")]
+    fn schedule_windows_tray_icon_refresh(app_handle: AppHandle) {
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(1500)).await;
+
+            let Some(tray) = app_handle.tray_by_id("main") else {
+                logging!(warn, Type::Tray, "Windows tray icon refresh skipped: tray not found");
+                return;
+            };
+
+            match TrayState::fallback_image() {
+                Ok(icon) => logging_error!(Type::Tray, tray.set_icon(Some(icon))),
+                Err(err) => logging!(warn, Type::Tray, "Windows tray fallback icon failed: {err}"),
+            }
+            logging_error!(Type::Tray, tray.set_visible(true));
+        });
     }
 
     fn should_handle_tray_click(&self) -> bool {
