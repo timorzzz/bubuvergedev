@@ -107,6 +107,22 @@ impl TrayState {
             },
         )
     }
+
+    fn image_from_bytes(icon_bytes: &[u8]) -> Result<tauri::image::Image<'static>> {
+        match tauri::image::Image::from_bytes(icon_bytes) {
+            Ok(icon) => Ok(icon),
+            Err(err) => {
+                logging!(
+                    warn,
+                    Type::Tray,
+                    "Failed to decode tray icon, falling back to app icon: {err}"
+                );
+                Ok(tauri::image::Image::from_bytes(include_bytes!(
+                    "../../../icons/icon.png"
+                ))?)
+            }
+        }
+    }
 }
 
 impl Default for Tray {
@@ -236,11 +252,9 @@ impl Tray {
         };
 
         let (_is_custom_icon, icon_bytes) = TrayState::get_tray_icon(verge).await;
+        let icon = TrayState::image_from_bytes(&icon_bytes)?;
 
-        logging_error!(
-            Type::Tray,
-            tray.set_icon(Some(tauri::image::Image::from_bytes(&icon_bytes)?))
-        );
+        logging_error!(Type::Tray, tray.set_icon(Some(icon)));
 
         #[cfg(target_os = "macos")]
         {
@@ -326,7 +340,7 @@ impl Tray {
         let verge = Config::verge().await.data_arc();
 
         let icon_bytes = TrayState::get_tray_icon(&verge).await.1;
-        let icon = tauri::image::Image::from_bytes(&icon_bytes)?;
+        let icon = TrayState::image_from_bytes(&icon_bytes)?;
         let system_proxy = verge.enable_system_proxy.as_ref().unwrap_or(&false);
         let tun_mode = verge.enable_tun_mode.as_ref().unwrap_or(&false);
         let tun_mode_available =
