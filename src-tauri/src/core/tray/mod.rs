@@ -96,8 +96,13 @@ impl TrayState {
         }
 
         #[cfg(not(target_os = "macos"))]
-        let _ = verge;
+        {
+            let _ = verge;
+            let _ = kind;
+            return (false, include_bytes!("../../../icons/icon.png").to_vec());
+        }
 
+        #[cfg(target_os = "macos")]
         (
             false,
             match kind {
