@@ -11,6 +11,7 @@ import {
   enhanceProfiles,
   getProfiles,
   openBluelayerPanelWindow,
+  patchVergeConfig,
   patchProfilesConfig,
   patchProfile,
   saveProfileFile,
@@ -27,7 +28,7 @@ export const BLUELAYER_UPDATE_BASE_URL = 'https://bluelayer.uk'
 export const BLUELAYER_PROFILE_NAME = 'Bluelayer'
 const BLUELAYER_PROFILE_DESC = 'bluelayer-managed-profile'
 const BLUELAYER_SESSION_KEY = 'bluelayer_session_v1'
-const BLUELAYER_SESSION_MAX_AGE = 7 * 24 * 60 * 60 * 1000
+const BLUELAYER_SESSION_MAX_AGE = 24 * 60 * 60 * 1000
 const BLUELAYER_SUBSCRIPTION_CACHE_KEY = 'bluelayer_subscription_cache_v1'
 const BLUELAYER_CREDENTIALS_KEY = 'bluelayer_credentials_v1'
 const BLUELAYER_LOGIN_CONFIG_CACHE_KEY = 'bluelayer_login_config_cache_v1'
@@ -189,6 +190,23 @@ function saveManagedSubscriptionCache(cache: ManagedSubscriptionCache | null) {
 
 function clearManagedSubscriptionCache() {
   saveManagedSubscriptionCache(null)
+}
+
+async function disableProxyForAuthReset() {
+  try {
+    await patchVergeConfig({
+      enable_system_proxy: false,
+      enable_tun_mode: false,
+    })
+  } catch (error) {
+    console.warn('[Bluelayer] failed to disable proxy after auth reset', error)
+  } finally {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['getVergeConfig'] }),
+      queryClient.invalidateQueries({ queryKey: ['getSystemProxy'] }),
+      queryClient.invalidateQueries({ queryKey: ['getAutotemProxy'] }),
+    ]).catch(() => {})
+  }
 }
 
 function getCachedRecord<T>(key: string, ttl: number): T | null {
@@ -738,7 +756,12 @@ export async function bootstrapBluelayer() {
     try {
       setState({ checking: true })
       const stored = getStoredSession()
-      if (!stored || Date.now() - stored.createdAt > BLUELAYER_SESSION_MAX_AGE) {
+      const sessionExpired =
+        stored && Date.now() - stored.createdAt > BLUELAYER_SESSION_MAX_AGE
+      if (!stored || sessionExpired) {
+        if (sessionExpired) {
+          await disableProxyForAuthReset()
+        }
         saveStoredSession(null)
         const cachedPanel = getCachedRecord<ResolvedPanel>(
           BLUELAYER_PANEL_CACHE_KEY,
@@ -767,6 +790,7 @@ export async function bootstrapBluelayer() {
       }
 
       if (!stored.cookie) {
+        await disableProxyForAuthReset()
         saveStoredSession(null)
         setState({ ready: true, checking: false, authenticated: false, session: null })
         return
@@ -800,6 +824,7 @@ export async function bootstrapBluelayer() {
         nav: runtimeState.nav,
       })
     } catch {
+      await disableProxyForAuthReset()
       saveStoredSession(null)
       setState({ ready: true, checking: false, authenticated: false, session: null })
     } finally {
@@ -870,6 +895,9 @@ export async function refreshBluelayerSubscription() {
       const { baseUrl } = await resolvePanel(current.panelIndex)
       const userResp = await v1Get(baseUrl, '/v1/userinfo', current.cookie)
       if (userResp.code !== 200 || !userResp.data) {
+        await disableProxyForAuthReset()
+        saveStoredSession(null)
+        setState({ ready: true, checking: false, authenticated: false, session: null })
         throw new Error(userResp.info || '鐢ㄦ埛淇℃伅鑾峰彇澶辫触')
       }
       const nextSession = { ...current, userInfo: userResp.data as UserInfo }
@@ -903,6 +931,7 @@ export async function logoutBluelayer() {
       )
     }
   } finally {
+    await disableProxyForAuthReset()
     await clearManagedProfiles().catch(() => null)
     saveStoredSession(null)
     resetState()
