@@ -98,8 +98,14 @@ impl TrayState {
         #[cfg(not(target_os = "macos"))]
         {
             let _ = verge;
-            let _ = kind;
-            return (false, include_bytes!("../../../icons/32x32.png").to_vec());
+            return (
+                false,
+                match kind {
+                    IconKind::Common => include_bytes!("../../../icons/tray-icon.ico").to_vec(),
+                    IconKind::SysProxy => include_bytes!("../../../icons/tray-icon-sys.ico").to_vec(),
+                    IconKind::Tun => include_bytes!("../../../icons/tray-icon-tun.ico").to_vec(),
+                },
+            );
         }
 
         #[cfg(target_os = "macos")]
@@ -504,9 +510,11 @@ impl Tray {
                 return;
             };
 
-            match TrayState::fallback_image() {
+            let verge = Config::verge().await.data_arc();
+            let icon_bytes = TrayState::get_tray_icon(&verge).await.1;
+            match TrayState::image_from_bytes(&icon_bytes) {
                 Ok(icon) => logging_error!(Type::Tray, tray.set_icon(Some(icon))),
-                Err(err) => logging!(warn, Type::Tray, "Windows tray fallback icon failed: {err}"),
+                Err(err) => logging!(warn, Type::Tray, "Windows tray refresh icon failed: {err}"),
             }
             logging_error!(Type::Tray, tray.set_visible(true));
         });
