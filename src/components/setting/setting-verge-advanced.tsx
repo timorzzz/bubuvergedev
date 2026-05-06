@@ -41,6 +41,7 @@ type ManualUpdateDialogState = {
 }
 
 const OS = getSystem()
+const displayVersion = String(version).split('+')[0]
 
 const SettingVergeAdvanced = ({ onError }: Props) => {
   const { t } = useTranslation()
@@ -148,7 +149,7 @@ const SettingVergeAdvanced = ({ onError }: Props) => {
   }
 
   const copyVersion = useCallback(() => {
-    navigator.clipboard.writeText(`v${version}`).then(() => {
+    navigator.clipboard.writeText(`v${displayVersion}`).then(() => {
       showNotice.success('settings.components.verge.advanced.notifications.versionCopied', 1000)
     })
   }, [])
@@ -369,7 +370,7 @@ const SettingVergeAdvanced = ({ onError }: Props) => {
           />
         }
       >
-        <Typography sx={{ py: '7px', pr: 1 }}>Bluelayer 加速器 v{version}</Typography>
+        <Typography sx={{ py: '7px', pr: 1 }}>Bluelayer 加速器 v{displayVersion}</Typography>
       </SettingItem>
 
       <SettingItem
