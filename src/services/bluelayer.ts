@@ -1,8 +1,8 @@
-﻿import { fetch } from '@tauri-apps/plugin-http'
 import { useSyncExternalStore } from 'react'
 import { version as appVersion } from '@root/package.json'
 
 import {
+  bluelayerHttpText,
   calcuProxies,
   createProfile,
   decryptLocalData,
@@ -55,6 +55,12 @@ type NavItemConfig = {
   color?: string
   link?: string
 }
+
+type HeaderSource =
+  | Headers
+  | Array<[string, string]>
+  | Record<string, string>
+  | undefined
 
 export type BluelayerPcUpdateEnvelope = {
   baseUrl: string
@@ -319,11 +325,26 @@ function encodeFormBody(body: Record<string, string>) {
   return params.toString()
 }
 
-function extractCookie(headers: Headers) {
+function readHeader(headers: HeaderSource, name: string) {
+  if (!headers) return ''
+
+  if (headers instanceof Headers) {
+    return headers.get(name) || ''
+  }
+
+  const lowerName = name.toLowerCase()
+  const entries = Array.isArray(headers) ? headers : Object.entries(headers)
+  return entries
+    .filter(([key]) => key.toLowerCase() === lowerName)
+    .map(([, value]) => String(value))
+    .filter(Boolean)
+    .join(',')
+}
+
+function extractCookie(headers: HeaderSource) {
   const candidates = [
-    headers.get('set-cookie'),
-    headers.get('Set-Cookie'),
-    headers.get('cookie'),
+    readHeader(headers, 'set-cookie'),
+    readHeader(headers, 'cookie'),
   ].filter(Boolean)
 
   if (!candidates.length) return ''
@@ -345,14 +366,20 @@ async function httpText(
     timeout?: number
   },
 ) {
-  const response = await fetch(url, {
+  const directResponse = await bluelayerHttpText({
+    url,
     method: init?.method ?? 'GET',
     headers: init?.headers,
     body: init?.body,
-    connectTimeout: init?.timeout ?? 12000,
-  } as any)
+    timeout: init?.timeout ?? 12000,
+  })
 
-  const text = await response.text()
+  const response = {
+    ok: directResponse.status >= 200 && directResponse.status < 300,
+    status: directResponse.status,
+    headers: directResponse.headers,
+  }
+  const text = directResponse.text
   if (!response.ok) {
     throw new Error(text || `request failed: ${response.status}`)
   }

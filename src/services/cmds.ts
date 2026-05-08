@@ -122,6 +122,22 @@ export async function openBluelayerPanelWindow(
   })
 }
 
+export type BluelayerHttpResponse = {
+  status: number
+  headers: Array<[string, string]>
+  text: string
+}
+
+export async function bluelayerHttpText(request: {
+  url: string
+  method?: string
+  headers?: Record<string, string>
+  body?: string
+  timeout?: number
+}) {
+  return invoke<BluelayerHttpResponse>('bluelayer_http_text', { request })
+}
+
 export async function encryptLocalData(data: string) {
   return invoke<string>('encrypt_local_data', { data })
 }

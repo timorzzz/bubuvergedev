@@ -190,6 +190,8 @@ impl Config {
     pub async fn generate() -> Result<()> {
         let (mut config, exists_keys, logs) = enhance::enhance().await;
 
+        sync_runtime_ports_from_verge(&mut config).await;
+        sanitize_platform_inbounds(&mut config);
         sanitize_tunnels_proxy(&mut config);
 
         Self::runtime().await.edit_draft(|d| {
@@ -248,6 +250,75 @@ impl Config {
         let _ = tokio::join!(save_clash_task, save_verge_task, save_profiles_task);
         logging!(info, Type::Config, "save all draft data finished");
     }
+}
+
+async fn sync_runtime_ports_from_verge(config: &mut Mapping) {
+    let verge = Config::verge().await.latest_arc();
+
+    if let Some(port) = verge.verge_mixed_port {
+        config.insert("mixed-port".into(), port.into());
+    }
+
+    if verge.verge_socks_enabled.unwrap_or(false) {
+        if let Some(port) = verge.verge_socks_port {
+            config.insert("socks-port".into(), port.into());
+        }
+    } else {
+        config.remove("socks-port");
+    }
+
+    if verge.verge_http_enabled.unwrap_or(false) || verge.enable_system_proxy.unwrap_or(false) {
+        if let Some(port) = verge.verge_port {
+            config.insert("port".into(), port.into());
+        }
+    } else {
+        config.remove("port");
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        if verge.verge_redir_enabled.unwrap_or(false) {
+            if let Some(port) = verge.verge_redir_port {
+                config.insert("redir-port".into(), port.into());
+            }
+        } else {
+            config.remove("redir-port");
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        if verge.verge_tproxy_enabled.unwrap_or(false) {
+            if let Some(port) = verge.verge_tproxy_port {
+                config.insert("tproxy-port".into(), port.into());
+            }
+        } else {
+            config.remove("tproxy-port");
+        }
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn remove_config_key(config: &mut Mapping, key: &'static str, reason: &'static str) {
+    if config.remove(key).is_some() {
+        logging!(
+            warn,
+            Type::Config,
+            "Removed unsupported `{key}` from runtime config: {reason}"
+        );
+    }
+}
+
+fn sanitize_platform_inbounds(config: &mut Mapping) {
+    #[cfg(target_os = "windows")]
+    remove_config_key(config, "redir-port", "mihomo redir inbound is not supported on Windows");
+
+    #[cfg(not(target_os = "linux"))]
+    remove_config_key(
+        config,
+        "tproxy-port",
+        "mihomo tproxy inbound is only supported on Linux",
+    );
 }
 
 fn sanitize_tunnels_proxy(config: &mut Mapping) {

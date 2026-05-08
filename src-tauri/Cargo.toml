@@ -96,9 +96,9 @@ tauri-plugin-devtools = { version = "2.0.1" }
 tauri-plugin-mihomo = { git = "https://github.com/timorzzz/tauri-plugin-mihomo", branch = "revert" }
 clash_verge_logger = { git = "https://github.com/timorzzz/clash-verge-logger" }
 async-trait = "0.1.89"
-clash_verge_service_ipc = { version = "2.2.0", features = [
+clash_verge_service_ipc = { path = "../crates/clash-verge-service-ipc", features = [
   "client",
-], git = "https://github.com/timorzzz/clash-verge-service-ipc" }
+] }
 arc-swap = "1.9.0"
 tokio-rustls = "0.26"
 rustls = { version = "0.23", features = ["ring"] }

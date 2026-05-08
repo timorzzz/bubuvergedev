@@ -6,6 +6,8 @@ use clash_verge_logging::{Type, logging};
 use nanoid::nanoid;
 use serde_json::json;
 use smartstring::alias::String;
+use std::collections::HashMap;
+use std::string::String as StdString;
 use std::sync::mpsc::sync_channel;
 use std::sync::{
     Arc,
@@ -14,6 +16,79 @@ use std::sync::{
 use std::time::Duration;
 use tauri::webview::PageLoadEvent;
 use tauri::{AppHandle, Listener as _, Manager as _, WebviewUrl, WebviewWindowBuilder};
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BluelayerHttpRequest {
+    url: StdString,
+    method: Option<StdString>,
+    headers: Option<HashMap<StdString, StdString>>,
+    body: Option<StdString>,
+    timeout: Option<u64>,
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BluelayerHttpResponse {
+    status: u16,
+    headers: Vec<(StdString, StdString)>,
+    text: StdString,
+}
+
+#[tauri::command]
+pub async fn bluelayer_http_text(request: BluelayerHttpRequest) -> CmdResult<BluelayerHttpResponse> {
+    let timeout_ms = request.timeout.unwrap_or(12_000).clamp(1_000, 120_000);
+    let timeout = Duration::from_millis(timeout_ms);
+    let url = reqwest::Url::parse(&request.url).stringify_err()?;
+
+    if !matches!(url.scheme(), "http" | "https") {
+        return Err("unsupported url scheme".into());
+    }
+
+    let method = request
+        .method
+        .as_deref()
+        .unwrap_or("GET")
+        .parse::<reqwest::Method>()
+        .stringify_err()?;
+
+    let client = reqwest::Client::builder()
+        .no_proxy()
+        .connect_timeout(timeout)
+        .timeout(timeout)
+        .redirect(reqwest::redirect::Policy::limited(10))
+        .user_agent(format!("Bluelayer/{}", env!("CARGO_PKG_VERSION")))
+        .build()
+        .stringify_err()?;
+
+    let mut builder = client.request(method, url);
+
+    if let Some(headers) = request.headers {
+        for (key, value) in headers {
+            builder = builder.header(key.as_str(), value.as_str());
+        }
+    }
+
+    if let Some(body) = request.body {
+        builder = builder.body(body);
+    }
+
+    let response = builder.send().await.stringify_err()?;
+    let status = response.status().as_u16();
+    let headers = response
+        .headers()
+        .iter()
+        .filter_map(|(key, value)| {
+            value
+                .to_str()
+                .ok()
+                .map(|value| (key.as_str().to_string(), value.to_string()))
+        })
+        .collect();
+    let text = response.text().await.stringify_err()?;
+
+    Ok(BluelayerHttpResponse { status, headers, text })
+}
 
 #[tauri::command]
 pub async fn open_app_dir() -> CmdResult<()> {

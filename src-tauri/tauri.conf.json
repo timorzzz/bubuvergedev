@@ -45,8 +45,7 @@
     "deep-link": {
       "desktop": {
         "schemes": [
-          "clash",
-          "clash-verge"
+          "bluelayer"
         ]
       }
     }

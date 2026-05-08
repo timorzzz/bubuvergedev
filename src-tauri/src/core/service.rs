@@ -123,13 +123,6 @@ struct WindowsServiceBinaries {
 }
 
 #[cfg(target_os = "windows")]
-const LEGACY_SERVICE_BINARY_NAME_WINDOWS: &str = "clash-verge-service.exe";
-#[cfg(target_os = "windows")]
-const LEGACY_SERVICE_INSTALL_NAME_WINDOWS: &str = "clash-verge-service-install.exe";
-#[cfg(target_os = "windows")]
-const LEGACY_SERVICE_UNINSTALL_NAME_WINDOWS: &str = "clash-verge-service-uninstall.exe";
-
-#[cfg(target_os = "windows")]
 fn prepare_windows_service_binaries() -> Result<WindowsServiceBinaries> {
     let source_binary = dirs::service_path()?;
     let source_install = source_binary.with_file_name(format!("{}.exe", dirs::SERVICE_INSTALL_NAME));
@@ -147,16 +140,10 @@ fn prepare_windows_service_binaries() -> Result<WindowsServiceBinaries> {
     let staged_binary = stage_dir.join(source_binary.file_name().unwrap());
     let staged_install = stage_dir.join(source_install.file_name().unwrap());
     let staged_uninstall = stage_dir.join(source_uninstall.file_name().unwrap());
-    let staged_legacy_binary = stage_dir.join(LEGACY_SERVICE_BINARY_NAME_WINDOWS);
-    let staged_legacy_install = stage_dir.join(LEGACY_SERVICE_INSTALL_NAME_WINDOWS);
-    let staged_legacy_uninstall = stage_dir.join(LEGACY_SERVICE_UNINSTALL_NAME_WINDOWS);
 
     copy_windows_service_binary(&source_binary, &staged_binary)?;
     copy_windows_service_binary(&source_install, &staged_install)?;
     copy_windows_service_binary(&source_uninstall, &staged_uninstall)?;
-    copy_windows_service_binary(&source_binary, &staged_legacy_binary)?;
-    copy_windows_service_binary(&source_install, &staged_legacy_install)?;
-    copy_windows_service_binary(&source_uninstall, &staged_legacy_uninstall)?;
 
     Ok(WindowsServiceBinaries {
         install_path: staged_install,
@@ -303,13 +290,6 @@ struct LinuxServiceBinaries {
 }
 
 #[cfg(target_os = "linux")]
-const LEGACY_SERVICE_BINARY_NAME: &str = "clash-verge-service";
-#[cfg(target_os = "linux")]
-const LEGACY_SERVICE_INSTALL_NAME: &str = "clash-verge-service-install";
-#[cfg(target_os = "linux")]
-const LEGACY_SERVICE_UNINSTALL_NAME: &str = "clash-verge-service-uninstall";
-
-#[cfg(target_os = "linux")]
 fn prepare_linux_service_binaries() -> Result<LinuxServiceBinaries> {
     let current_exe = tauri::utils::platform::current_exe()?;
     let current_dir = current_exe
@@ -332,16 +312,10 @@ fn prepare_linux_service_binaries() -> Result<LinuxServiceBinaries> {
     let staged_binary = stage_dir.join(dirs::SERVICE_BINARY_NAME);
     let staged_install = stage_dir.join(dirs::SERVICE_INSTALL_NAME);
     let staged_uninstall = stage_dir.join(dirs::SERVICE_UNINSTALL_NAME);
-    let staged_legacy_binary = stage_dir.join(LEGACY_SERVICE_BINARY_NAME);
-    let staged_legacy_install = stage_dir.join(LEGACY_SERVICE_INSTALL_NAME);
-    let staged_legacy_uninstall = stage_dir.join(LEGACY_SERVICE_UNINSTALL_NAME);
 
     copy_linux_service_binary(&source_binary, &staged_binary)?;
     copy_linux_service_binary(&source_install, &staged_install)?;
     copy_linux_service_binary(&source_uninstall, &staged_uninstall)?;
-    copy_linux_service_binary(&source_binary, &staged_legacy_binary)?;
-    copy_linux_service_binary(&source_install, &staged_legacy_install)?;
-    copy_linux_service_binary(&source_uninstall, &staged_legacy_uninstall)?;
 
     Ok(LinuxServiceBinaries {
         install_path: staged_install,
@@ -421,7 +395,7 @@ fn install_service() -> Result<()> {
     let gid = tauri_plugin_clash_verge_sysinfo::current_gid();
     let prompt = clash_verge_i18n::t!("service.adminInstallPrompt");
     let prompt = prompt.replace('"', "\\\"");
-    let shell_command = format!("cd / && CLASH_VERGE_SERVICE_GID={gid} '{}'", install_shell);
+    let shell_command = format!("cd / && BLUELAYER_SERVICE_GID={gid} '{}'", install_shell);
     let command = format!(r#"do shell script "{shell_command}" with administrator privileges with prompt "{prompt}""#);
 
     let output = StdCommand::new("osascript")
@@ -462,13 +436,6 @@ struct MacosServiceBinaries {
 }
 
 #[cfg(target_os = "macos")]
-const LEGACY_SERVICE_BINARY_NAME: &str = "clash-verge-service";
-#[cfg(target_os = "macos")]
-const LEGACY_SERVICE_INSTALL_NAME: &str = "clash-verge-service-install";
-#[cfg(target_os = "macos")]
-const LEGACY_SERVICE_UNINSTALL_NAME: &str = "clash-verge-service-uninstall";
-
-#[cfg(target_os = "macos")]
 fn prepare_macos_service_binaries() -> Result<MacosServiceBinaries> {
     let source_binary = dirs::service_path()?;
     let source_install = source_binary.with_file_name(dirs::SERVICE_INSTALL_NAME);
@@ -486,16 +453,10 @@ fn prepare_macos_service_binaries() -> Result<MacosServiceBinaries> {
     let staged_binary = stage_dir.join(dirs::SERVICE_BINARY_NAME);
     let staged_install = stage_dir.join(dirs::SERVICE_INSTALL_NAME);
     let staged_uninstall = stage_dir.join(dirs::SERVICE_UNINSTALL_NAME);
-    let staged_legacy_binary = stage_dir.join(LEGACY_SERVICE_BINARY_NAME);
-    let staged_legacy_install = stage_dir.join(LEGACY_SERVICE_INSTALL_NAME);
-    let staged_legacy_uninstall = stage_dir.join(LEGACY_SERVICE_UNINSTALL_NAME);
 
     copy_macos_service_binary(&source_binary, &staged_binary)?;
     copy_macos_service_binary(&source_install, &staged_install)?;
     copy_macos_service_binary(&source_uninstall, &staged_uninstall)?;
-    copy_macos_service_binary(&source_binary, &staged_legacy_binary)?;
-    copy_macos_service_binary(&source_install, &staged_legacy_install)?;
-    copy_macos_service_binary(&source_uninstall, &staged_legacy_uninstall)?;
 
     Ok(MacosServiceBinaries {
         install_path: staged_install,
@@ -580,7 +541,7 @@ pub(super) async fn start_with_existing_service(config_file: &PathBuf) -> Result
 
     let response = clash_verge_service_ipc::start_clash(&payload)
         .await
-        .context("无法连接到Clash Verge Service")?;
+        .context("无法连接到 Bluelayer Service")?;
 
     if response.code > 0 {
         let err_msg = response.message;
@@ -607,7 +568,7 @@ pub(super) async fn get_clash_logs_by_service() -> Result<Vec<CompactString>> {
 
     let response = clash_verge_service_ipc::get_clash_logs()
         .await
-        .context("无法连接到Clash Verge Service")?;
+        .context("无法连接到 Bluelayer Service")?;
 
     if response.code > 0 {
         let err_msg = response.message;
@@ -625,7 +586,7 @@ pub(crate) async fn stop_core_by_service() -> Result<()> {
 
     let response = clash_verge_service_ipc::stop_clash()
         .await
-        .context("无法连接到Clash Verge Service")?;
+        .context("无法连接到 Bluelayer Service")?;
 
     if response.code > 0 {
         let err_msg = response.message;

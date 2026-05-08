@@ -160,6 +160,7 @@ mod app_init {
             cmd::open_app_dir,
             cmd::open_logs_dir,
             cmd::open_web_url,
+            cmd::bluelayer_http_text,
             cmd::encrypt_local_data,
             cmd::decrypt_local_data,
             cmd::open_bluelayer_panel_window,

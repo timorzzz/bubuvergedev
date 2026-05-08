@@ -70,6 +70,7 @@ const SIDECAR_HOST = target
 
 const RESOURCES_DIR = path.join(cwd, 'src-tauri', 'resources')
 const SIDECAR_DIR = path.join(cwd, 'src-tauri', 'sidecar')
+const SERVICE_CRATE_DIR = path.join(cwd, 'crates', 'clash-verge-service-ipc')
 // Linux service binaries are bundled as externalBin sidecars (see tauri.linux.conf.json)
 const SERVICE_DIR = platform === 'linux' ? SIDECAR_DIR : RESOURCES_DIR
 
@@ -577,33 +578,53 @@ const resolveServicePermission = async () => {
 // =======================
 // Other resource resolvers (service, mmdb, geosite, geoip, enableLoopback)
 // =======================
-const SERVICE_URL = `https://github.com/clash-verge-rev/clash-verge-service-ipc/releases/download/${SIDECAR_HOST}`
+async function buildServiceBinary(binName, targetFile) {
+  const ext = platform === 'win32' ? '.exe' : ''
+  const builtPath = path.join(cwd, 'target', SIDECAR_HOST, 'release', `${binName}${ext}`)
+
+  if (!fs.existsSync(SERVICE_CRATE_DIR)) {
+    throw new Error(`Service IPC crate not found: ${SERVICE_CRATE_DIR}`)
+  }
+
+  execSync(
+    `cargo build -p clash_verge_service_ipc --bin ${binName} --features standalone --release --target ${SIDECAR_HOST}`,
+    { cwd, stdio: 'inherit' },
+  )
+
+  if (!fs.existsSync(builtPath)) {
+    throw new Error(`Built service binary not found: ${builtPath}`)
+  }
+
+  return resolveResource({
+    file: targetFile,
+    dir: SERVICE_DIR,
+    localPath: builtPath,
+  })
+}
+
 const resolveService = () => {
   const ext = platform === 'win32' ? '.exe' : ''
   const suffix = platform === 'linux' ? '-' + SIDECAR_HOST : ''
-  return resolveResource({
-    file: 'bluelayer-mihomo-service' + suffix + ext,
-    dir: SERVICE_DIR,
-    downloadURL: `${SERVICE_URL}/clash-verge-service${ext}`,
-  })
+  return buildServiceBinary(
+    'bluelayer-mihomo-service',
+    'bluelayer-mihomo-service' + suffix + ext,
+  )
 }
 const resolveInstall = () => {
   const ext = platform === 'win32' ? '.exe' : ''
   const suffix = platform === 'linux' ? '-' + SIDECAR_HOST : ''
-  return resolveResource({
-    file: 'bluelayer-mihomo-service-install' + suffix + ext,
-    dir: SERVICE_DIR,
-    downloadURL: `${SERVICE_URL}/clash-verge-service-install${ext}`,
-  })
+  return buildServiceBinary(
+    'bluelayer-mihomo-service-install',
+    'bluelayer-mihomo-service-install' + suffix + ext,
+  )
 }
 const resolveUninstall = () => {
   const ext = platform === 'win32' ? '.exe' : ''
   const suffix = platform === 'linux' ? '-' + SIDECAR_HOST : ''
-  return resolveResource({
-    file: 'bluelayer-mihomo-service-uninstall' + suffix + ext,
-    dir: SERVICE_DIR,
-    downloadURL: `${SERVICE_URL}/clash-verge-service-uninstall${ext}`,
-  })
+  return buildServiceBinary(
+    'bluelayer-mihomo-service-uninstall',
+    'bluelayer-mihomo-service-uninstall' + suffix + ext,
+  )
 }
 
 const resolveMmdb = () =>

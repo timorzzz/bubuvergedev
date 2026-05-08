@@ -1,6 +1,7 @@
 use crate::config::Config;
 use crate::{
     config::{DEFAULT_PAC, deserialize_encrypted, serialize_encrypted},
+    constants::network,
     utils::{dirs, help},
 };
 use anyhow::Result;
@@ -284,8 +285,49 @@ pub struct IVergeTheme {
 }
 
 impl IVerge {
+    #[cfg(not(target_os = "windows"))]
+    const LEGACY_REDIR_PORT: u16 = 7895;
+    #[cfg(target_os = "linux")]
+    const LEGACY_TPROXY_PORT: u16 = 7896;
+    const LEGACY_MIXED_PORT: u16 = 7897;
+    const LEGACY_SOCKS_PORT: u16 = 7898;
+    const LEGACY_HTTP_PORT: u16 = 7899;
+
     /// 有效的clash核心名称
     pub const VALID_CLASH_CORES: &'static [&'static str] = &["bluelayer-mihomo", "bluelayer-mihomo-alpha"];
+
+    fn normalize_legacy_clash_verge_ports(&mut self) -> bool {
+        let mut changed = false;
+
+        #[cfg(not(target_os = "windows"))]
+        if self.verge_redir_port == Some(Self::LEGACY_REDIR_PORT) {
+            self.verge_redir_port = Some(network::ports::DEFAULT_REDIR);
+            changed = true;
+        }
+
+        #[cfg(target_os = "linux")]
+        if self.verge_tproxy_port == Some(Self::LEGACY_TPROXY_PORT) {
+            self.verge_tproxy_port = Some(network::ports::DEFAULT_TPROXY);
+            changed = true;
+        }
+
+        if self.verge_mixed_port == Some(Self::LEGACY_MIXED_PORT) {
+            self.verge_mixed_port = Some(network::ports::DEFAULT_MIXED);
+            changed = true;
+        }
+
+        if self.verge_socks_port == Some(Self::LEGACY_SOCKS_PORT) {
+            self.verge_socks_port = Some(network::ports::DEFAULT_SOCKS);
+            changed = true;
+        }
+
+        if self.verge_port == Some(Self::LEGACY_HTTP_PORT) {
+            self.verge_port = Some(network::ports::DEFAULT_HTTP);
+            changed = true;
+        }
+
+        changed
+    }
 
     /// 验证并修正配置文件中的clash_core值
     pub async fn validate_and_fix_config() -> Result<()> {
@@ -383,6 +425,16 @@ impl IVerge {
                     {
                         config.start_page = Some(String::from("/"));
                     }
+                    if config.normalize_legacy_clash_verge_ports() {
+                        logging!(
+                            info,
+                            Type::Config,
+                            "Detected legacy Clash Verge default ports, migrated to Bluelayer isolated defaults"
+                        );
+                        if let Err(err) = help::save_yaml(&path, &config, Some("# Bluelayer Config")).await {
+                            logging!(warn, Type::Config, "failed to save migrated Bluelayer ports: {err}");
+                        }
+                    }
                     config
                 }
                 Err(err) => {
@@ -430,17 +482,17 @@ impl IVerge {
             pac_file_content: Some(DEFAULT_PAC.into()),
             proxy_host: Some("127.0.0.1".into()),
             #[cfg(not(target_os = "windows"))]
-            verge_redir_port: Some(7895),
+            verge_redir_port: Some(network::ports::DEFAULT_REDIR),
             #[cfg(not(target_os = "windows"))]
             verge_redir_enabled: Some(false),
             #[cfg(target_os = "linux")]
-            verge_tproxy_port: Some(7896),
+            verge_tproxy_port: Some(network::ports::DEFAULT_TPROXY),
             #[cfg(target_os = "linux")]
             verge_tproxy_enabled: Some(false),
-            verge_mixed_port: Some(7897),
-            verge_socks_port: Some(7898),
+            verge_mixed_port: Some(network::ports::DEFAULT_MIXED),
+            verge_socks_port: Some(network::ports::DEFAULT_SOCKS),
             verge_socks_enabled: Some(false),
-            verge_port: Some(7899),
+            verge_port: Some(network::ports::DEFAULT_HTTP),
             verge_http_enabled: Some(false),
             enable_proxy_guard: Some(false),
             enable_bypass_check: Some(true),
