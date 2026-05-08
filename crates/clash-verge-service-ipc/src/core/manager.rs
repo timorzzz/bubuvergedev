@@ -341,7 +341,7 @@ impl CoreManager {
                     warn!("{:?} does not exist, skipping permission setting", target);
                     return;
                 }
-                match fs::set_permissions(target, Permissions::from_mode(0o777)).await {
+                match fs::set_permissions(&target, Permissions::from_mode(0o777)).await {
                     Ok(_) => info!("Permissions set to 777 for {:?}", target),
                     Err(e) => warn!("Failed to set permissions for {:?}: {}", target, e),
                 }
@@ -369,7 +369,7 @@ impl CoreManager {
                 info!("{:?} does not exist, no need to remove", target);
                 return;
             }
-            match fs::remove_file(target).await {
+            match fs::remove_file(&target).await {
                 Ok(_) => info!("Successfully removed {:?}", target),
                 Err(e) => warn!("Failed to remove {:?}: {}", target, e),
             }
