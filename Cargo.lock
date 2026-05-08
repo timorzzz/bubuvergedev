@@ -7331,6 +7331,7 @@ version = "0.5.3"
 dependencies = [
  "iptools",
  "log",
+ "serial_test",
  "system-configuration",
  "thiserror 2.0.18",
  "tokio",

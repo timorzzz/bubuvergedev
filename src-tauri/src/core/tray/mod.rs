@@ -98,14 +98,14 @@ impl TrayState {
         #[cfg(not(target_os = "macos"))]
         {
             let _ = verge;
-            return (
+            (
                 false,
                 match kind {
                     IconKind::Common => include_bytes!("../../../icons/tray-icon.ico").to_vec(),
                     IconKind::SysProxy => include_bytes!("../../../icons/tray-icon-sys.ico").to_vec(),
                     IconKind::Tun => include_bytes!("../../../icons/tray-icon-tun.ico").to_vec(),
                 },
-            );
+            )
         }
 
         #[cfg(target_os = "macos")]

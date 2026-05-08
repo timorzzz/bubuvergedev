@@ -223,16 +223,21 @@ impl WindowManager {
     fn activate_window(window: &WebviewWindow<Wry>) -> WindowOperationResult {
         logging!(info, Type::Window, "开始激活窗口");
 
-        let mut operations_successful = true;
-
-        if let Err(e) = apply_fixed_window_size(window) {
-            logging!(warn, Type::Window, "固定窗口尺寸失败: {}", e);
-            operations_successful = false;
-        }
-        if let Err(e) = window.set_resizable(false) {
-            logging!(warn, Type::Window, "设置窗口不可调整失败: {}", e);
-            operations_successful = false;
-        }
+        let size_successful = match apply_fixed_window_size(window) {
+            Ok(()) => true,
+            Err(e) => {
+                logging!(warn, Type::Window, "固定窗口尺寸失败: {}", e);
+                false
+            }
+        };
+        let resizable_successful = match window.set_resizable(false) {
+            Ok(()) => true,
+            Err(e) => {
+                logging!(warn, Type::Window, "设置窗口不可调整失败: {}", e);
+                false
+            }
+        };
+        let mut operations_successful = size_successful && resizable_successful;
 
         // 1. 如果窗口最小化，先取消最小化
         if window.is_minimized().unwrap_or(false) {

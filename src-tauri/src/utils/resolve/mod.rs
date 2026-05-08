@@ -218,12 +218,12 @@ pub(super) async fn reset_stale_proxy_and_tun_state() {
 
     logging_error!(Type::Setup, sysopt::Sysopt::global().reset_sysproxy().await);
 
-    if tun_enabled {
-        if crate::core::service::is_service_ipc_path_exists() {
-            logging_error!(Type::Setup, crate::core::service::stop_core_by_service().await);
-        }
+    if tun_enabled && crate::core::service::is_service_ipc_path_exists() {
+        logging_error!(Type::Setup, crate::core::service::stop_core_by_service().await);
+    }
 
-        #[cfg(target_os = "macos")]
+    #[cfg(target_os = "macos")]
+    if tun_enabled {
         dns::restore_public_dns().await;
     }
 

@@ -38,6 +38,9 @@ windows = { version = "0.62", features = [
     "Win32_System_Memory",
 ] }
 
+[dev-dependencies]
+serial_test = "3.4"
+
 [features]
 default = ["iptools"]
 guard = ["tokio"]

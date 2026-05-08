@@ -296,35 +296,50 @@ impl IVerge {
     /// 有效的clash核心名称
     pub const VALID_CLASH_CORES: &'static [&'static str] = &["bluelayer-mihomo", "bluelayer-mihomo-alpha"];
 
+    fn migrate_legacy_port(port: &mut Option<u16>, legacy: u16, isolated: u16) -> bool {
+        if *port == Some(legacy) {
+            *port = Some(isolated);
+            true
+        } else {
+            false
+        }
+    }
+
     fn normalize_legacy_clash_verge_ports(&mut self) -> bool {
-        let mut changed = false;
+        let mut changed = Self::migrate_legacy_port(
+            &mut self.verge_mixed_port,
+            Self::LEGACY_MIXED_PORT,
+            network::ports::DEFAULT_MIXED,
+        );
 
         #[cfg(not(target_os = "windows"))]
-        if self.verge_redir_port == Some(Self::LEGACY_REDIR_PORT) {
-            self.verge_redir_port = Some(network::ports::DEFAULT_REDIR);
-            changed = true;
+        {
+            changed |= Self::migrate_legacy_port(
+                &mut self.verge_redir_port,
+                Self::LEGACY_REDIR_PORT,
+                network::ports::DEFAULT_REDIR,
+            );
         }
 
         #[cfg(target_os = "linux")]
-        if self.verge_tproxy_port == Some(Self::LEGACY_TPROXY_PORT) {
-            self.verge_tproxy_port = Some(network::ports::DEFAULT_TPROXY);
-            changed = true;
+        {
+            changed |= Self::migrate_legacy_port(
+                &mut self.verge_tproxy_port,
+                Self::LEGACY_TPROXY_PORT,
+                network::ports::DEFAULT_TPROXY,
+            );
         }
 
-        if self.verge_mixed_port == Some(Self::LEGACY_MIXED_PORT) {
-            self.verge_mixed_port = Some(network::ports::DEFAULT_MIXED);
-            changed = true;
-        }
-
-        if self.verge_socks_port == Some(Self::LEGACY_SOCKS_PORT) {
-            self.verge_socks_port = Some(network::ports::DEFAULT_SOCKS);
-            changed = true;
-        }
-
-        if self.verge_port == Some(Self::LEGACY_HTTP_PORT) {
-            self.verge_port = Some(network::ports::DEFAULT_HTTP);
-            changed = true;
-        }
+        changed |= Self::migrate_legacy_port(
+            &mut self.verge_socks_port,
+            Self::LEGACY_SOCKS_PORT,
+            network::ports::DEFAULT_SOCKS,
+        );
+        changed |= Self::migrate_legacy_port(
+            &mut self.verge_port,
+            Self::LEGACY_HTTP_PORT,
+            network::ports::DEFAULT_HTTP,
+        );
 
         changed
     }

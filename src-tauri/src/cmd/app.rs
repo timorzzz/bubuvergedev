@@ -202,8 +202,8 @@ fn create_bluelayer_panel_window(
 
     let target_origin = parsed_url.origin().ascii_serialization();
     let cookie_pairs_json = json!(cookie_pairs).to_string();
-    let injected_flag = injected.clone();
-    let ready_flag = ready_to_show.clone();
+    let injected_flag = injected;
+    let ready_flag = ready_to_show;
     let panel_label = label.clone();
     let target_origin_for_log = target_origin.clone();
     let has_cookie_pairs = !cookie_pairs.is_empty();

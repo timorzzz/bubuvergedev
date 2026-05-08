@@ -137,9 +137,21 @@ fn prepare_windows_service_binaries() -> Result<WindowsServiceBinaries> {
     let stage_dir = dirs::app_home_dir()?.join("service-bin");
     fs::create_dir_all(&stage_dir).with_context(|| format!("failed to create service staging dir: {stage_dir:?}"))?;
 
-    let staged_binary = stage_dir.join(source_binary.file_name().unwrap());
-    let staged_install = stage_dir.join(source_install.file_name().unwrap());
-    let staged_uninstall = stage_dir.join(source_uninstall.file_name().unwrap());
+    let staged_binary = stage_dir.join(
+        source_binary
+            .file_name()
+            .ok_or_else(|| anyhow!("failed to resolve service binary file name: {source_binary:?}"))?,
+    );
+    let staged_install = stage_dir.join(
+        source_install
+            .file_name()
+            .ok_or_else(|| anyhow!("failed to resolve service installer file name: {source_install:?}"))?,
+    );
+    let staged_uninstall = stage_dir.join(
+        source_uninstall
+            .file_name()
+            .ok_or_else(|| anyhow!("failed to resolve service uninstaller file name: {source_uninstall:?}"))?,
+    );
 
     copy_windows_service_binary(&source_binary, &staged_binary)?;
     copy_windows_service_binary(&source_install, &staged_install)?;
