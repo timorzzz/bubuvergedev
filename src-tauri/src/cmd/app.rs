@@ -14,6 +14,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 use std::time::Duration;
+use sysproxy::Sysproxy;
 use tauri::webview::PageLoadEvent;
 use tauri::{AppHandle, Listener as _, Manager as _, WebviewUrl, WebviewWindowBuilder};
 
@@ -25,6 +26,7 @@ pub struct BluelayerHttpRequest {
     headers: Option<HashMap<StdString, StdString>>,
     body: Option<StdString>,
     timeout: Option<u64>,
+    proxy_strategy: Option<StdString>,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -52,25 +54,72 @@ pub async fn bluelayer_http_text(request: BluelayerHttpRequest) -> CmdResult<Blu
         .parse::<reqwest::Method>()
         .stringify_err()?;
 
-    let client = reqwest::Client::builder()
+    let strategy = request
+        .proxy_strategy
+        .as_deref()
+        .unwrap_or("directThenSystem")
+        .to_ascii_lowercase();
+
+    match strategy.as_str() {
+        "direct" => send_bluelayer_http_request(&request, &method, &url, timeout, None).await,
+        "system" => {
+            let proxy_url = read_system_proxy_url();
+            send_bluelayer_http_request(&request, &method, &url, timeout, proxy_url.as_deref()).await
+        }
+        _ => match send_bluelayer_http_request(&request, &method, &url, timeout, None).await {
+            Ok(response) => Ok(response),
+            Err(direct_err) => {
+                let Some(proxy_url) = read_system_proxy_url() else {
+                    return Err(direct_err);
+                };
+                match send_bluelayer_http_request(&request, &method, &url, timeout, Some(proxy_url.as_str())).await {
+                    Ok(response) => Ok(response),
+                    Err(system_err) => Err(format!("{direct_err}; system proxy retry failed: {system_err}").into()),
+                }
+            }
+        },
+    }
+}
+
+fn read_system_proxy_url() -> Option<StdString> {
+    let proxy = Sysproxy::get_system_proxy().ok()?;
+    if !proxy.enable {
+        return None;
+    }
+    Some(format!("http://{}:{}", proxy.host, proxy.port))
+}
+
+async fn send_bluelayer_http_request(
+    request: &BluelayerHttpRequest,
+    method: &reqwest::Method,
+    url: &reqwest::Url,
+    timeout: Duration,
+    proxy_url: Option<&str>,
+) -> CmdResult<BluelayerHttpResponse> {
+    let mut client_builder = reqwest::Client::builder()
+        .use_rustls_tls()
         .no_proxy()
         .connect_timeout(timeout)
         .timeout(timeout)
         .redirect(reqwest::redirect::Policy::limited(10))
-        .user_agent(format!("Bluelayer/{}", env!("CARGO_PKG_VERSION")))
-        .build()
-        .stringify_err()?;
+        .user_agent(format!("Bluelayer/{}", env!("CARGO_PKG_VERSION")));
 
-    let mut builder = client.request(method, url);
+    if let Some(proxy_url) = proxy_url {
+        client_builder = client_builder.proxy(reqwest::Proxy::all(proxy_url).stringify_err()?);
+    }
 
-    if let Some(headers) = request.headers {
+    let client = client_builder.build().stringify_err()?;
+
+    let mut builder = client.request(method.clone(), url.clone());
+
+    if let Some(headers) = request.headers.as_ref() {
         for (key, value) in headers {
             builder = builder.header(key.as_str(), value.as_str());
         }
     }
 
-    if let Some(body) = request.body {
-        builder = builder.body(body);
+    if let Some(body) = request.body.as_ref() {
+        builder = builder.body(body.to_string());
     }
 
     let response = builder.send().await.stringify_err()?;

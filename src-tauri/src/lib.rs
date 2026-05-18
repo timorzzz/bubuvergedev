@@ -245,6 +245,8 @@ mod app_init {
 }
 
 pub fn run() {
+    utils::proxy_env::clear_process_proxy_env();
+
     if app_init::init_singleton_check().is_err() {
         return;
     }
