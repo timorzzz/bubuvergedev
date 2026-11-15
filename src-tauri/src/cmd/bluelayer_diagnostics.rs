@@ -32,6 +32,7 @@ enum FailureReason {
     Ipc,
     InvalidPayload,
     Http,
+    PermissionDenied,
     ActivationRejected,
     ProfileMissing,
     EmptyProxies,

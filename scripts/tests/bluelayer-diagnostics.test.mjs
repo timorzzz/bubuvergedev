@@ -124,6 +124,35 @@ test("activation failures keep their fixed diagnostic reason", () => {
 	);
 });
 
+test("native decoding errors are not collapsed into unknown failures", () => {
+	for (const error of [
+		"error decoding response body",
+		"missing field `uot` at line 1 column 45",
+		"unknown variant `FutureProtocol`",
+		{ message: "error deserializing response body" },
+		"core_snapshot:invalid_shape",
+	])
+		assert.equal(classifyBluelayerError(error), "invalid_payload");
+});
+
+test("command permission failures have their own safe category", () => {
+	assert.equal(
+		classifyBluelayerError("plugin command not allowed by permissions"),
+		"permission_denied",
+	);
+});
+
+test("a short final probe does not replace a persistent decode failure with timeout", async () => {
+	const result = await waitForProxyReadiness(
+		async () => {
+			throw "error decoding response body";
+		},
+		{ timeoutMs: 55, requestTimeoutMs: 1000, intervalMs: 1 },
+	);
+	assert.equal(result.ready, false);
+	assert.equal(result.reason, "invalid_payload");
+});
+
 test("standard request errors are categorized without including their text", () => {
 	for (const [message, reason] of [
 		["request timed out", "timeout"],

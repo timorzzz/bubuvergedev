@@ -1,0 +1,17 @@
+mixed-port: 0
+mode: rule
+log-level: warning
+ipv6: false
+dns:
+  enable: false
+proxies:
+  - name: test-node
+    type: socks5
+    server: 127.0.0.1
+    port: 65530
+proxy-groups:
+  - name: test-group
+    type: select
+    proxies: [test-node, DIRECT]
+rules:
+  - MATCH,test-group

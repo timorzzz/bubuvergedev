@@ -1,6 +1,7 @@
 [workspace]
 members = [
   "src-tauri",
+  "crates/bluelayer-core-snapshot",
   "crates/clash-verge-draft",
   "crates/clash-verge-logging",
   "crates/clash-verge-signal",
@@ -47,6 +48,7 @@ codegen-units = 1
 split-debuginfo = "unpacked"
 
 [workspace.dependencies]
+bluelayer-core-snapshot = { path = "crates/bluelayer-core-snapshot" }
 clash-verge-draft = { path = "crates/clash-verge-draft" }
 clash-verge-logging = { path = "crates/clash-verge-logging" }
 clash-verge-signal = { path = "crates/clash-verge-signal" }

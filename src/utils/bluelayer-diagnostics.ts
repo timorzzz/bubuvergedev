@@ -6,6 +6,7 @@ export type BluelayerFailureReason =
 	| "ipc"
 	| "invalid_payload"
 	| "http"
+	| "permission_denied"
 	| "activation_rejected"
 	| "profile_missing"
 	| "empty_proxies"
@@ -29,13 +30,30 @@ export function classifyBluelayerError(error: unknown): BluelayerFailureReason {
 			? error.message
 			: typeof error === "string"
 				? error
-				: "";
+				: error &&
+						typeof error === "object" &&
+						"message" in error &&
+						typeof error.message === "string"
+					? error.message
+					: "";
+	if (
+		/denied|not allowed|forbidden.*command|not found.*command|command.*not found/i.test(
+			message,
+		)
+	)
+		return "permission_denied";
+	if (
+		/decod|deserial|invalid_payload|invalid_shape|missing field|unknown variant|parse error/i.test(
+			message,
+		)
+	)
+		return "invalid_payload";
 	if (/timeout|timed out|\u8d85\u65f6/i.test(message)) return "timeout";
 	if (/dns|resolve|lookup|getaddrinfo/i.test(message)) return "dns";
 	if (/certificate|tls|ssl/i.test(message)) return "tls";
 	if (/pipe|socket|ipc|plugin.*mihomo/i.test(message)) return "ipc";
 	if (/connect|network|econn|\u8fde\u63a5/i.test(message)) return "connection";
-	if (/HTTP\s*\d{3}/i.test(message)) return "http";
+	if (/HTTP\s*\d{3}|core_snapshot:http/i.test(message)) return "http";
 	return "unknown";
 }
 
@@ -103,6 +121,12 @@ export async function waitForProxyReadiness(
 	let counts = { groupCount: 0, nodeCount: 0 };
 	let reason: BluelayerFailureReason = "empty_proxies";
 	while (performance.now() - started < timeoutMs) {
+		// Do not overwrite the useful failure with a new query that has no time left.
+		if (
+			attempts > 0 &&
+			timeoutMs - (performance.now() - started) < Math.min(50, requestTimeoutMs)
+		)
+			break;
 		attempts += 1;
 		let timer: ReturnType<typeof setTimeout> | undefined;
 		try {

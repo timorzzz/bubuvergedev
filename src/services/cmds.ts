@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import dayjs from "dayjs";
-import { getProxies, getProxyProviders } from "tauri-plugin-mihomo-api";
+import type { getProxies, getProxyProviders } from "tauri-plugin-mihomo-api";
 
 import { showNotice } from "@/services/notice-service";
 import type { BluelayerFailureReason } from "@/utils/bluelayer-diagnostics";
@@ -24,6 +24,13 @@ export async function writeBluelayerDiagnostic(diagnostic: {
 	nodeCount?: number;
 }) {
 	await invoke<void>("write_bluelayer_diagnostic", { diagnostic });
+}
+
+export async function getMihomoProxies() {
+	return invoke<Awaited<ReturnType<typeof getProxies>>>(
+		"read_bluelayer_core_snapshot",
+		{ kind: "proxies" },
+	);
 }
 
 export async function copyClashEnv() {
@@ -183,7 +190,7 @@ export async function calcuProxies(): Promise<{
 	proxies: IProxyItem[];
 }> {
 	const [proxyResponse, providerResponse] = await Promise.all([
-		getProxies(),
+		getMihomoProxies(),
 		calcuProxyProviders(),
 	]);
 
@@ -270,7 +277,10 @@ export async function calcuProxies(): Promise<{
 }
 
 export async function calcuProxyProviders() {
-	const providers = await getProxyProviders();
+	const providers = await invoke<Awaited<ReturnType<typeof getProxyProviders>>>(
+		"read_bluelayer_core_snapshot",
+		{ kind: "providers" },
+	);
 	return Object.fromEntries(
 		Object.entries(providers.providers)
 			.sort()

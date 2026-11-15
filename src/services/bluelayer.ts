@@ -1,5 +1,4 @@
 import { useSyncExternalStore } from "react";
-import { getProxies } from "tauri-plugin-mihomo-api";
 
 import {
 	bluelayerHttpText,
@@ -8,6 +7,7 @@ import {
 	deleteProfile,
 	encryptLocalData,
 	getProfiles,
+	getMihomoProxies,
 	openBluelayerPanelWindow,
 	patchVergeConfig,
 	patchProfilesConfig,
@@ -768,7 +768,7 @@ async function ensureManagedProfile(baseUrl: string, subscriptionUrl: string) {
 				"activation_rejected",
 			);
 	});
-	const readiness = await waitForProxyReadiness(getProxies);
+	const readiness = await waitForProxyReadiness(getMihomoProxies);
 	if (!readiness.ready) {
 		await reportDiagnostic({
 			stage: "core_ready",

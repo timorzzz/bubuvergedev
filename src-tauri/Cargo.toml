@@ -30,6 +30,7 @@ identifier = "uk.bluelayer.client"
 tauri-build = { version = "2.5.6", features = [] }
 
 [dependencies]
+bluelayer-core-snapshot = { workspace = true }
 clash-verge-draft = { workspace = true }
 clash-verge-logging = { workspace = true }
 clash-verge-signal = { workspace = true }

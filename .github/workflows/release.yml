@@ -185,6 +185,12 @@ jobs:
           cache-all-crates: true
           cache-workspace-crates: true
 
+      - name: Test native core IPC compatibility
+        run: cargo test --locked -p bluelayer-core-snapshot --lib
+
+      - name: Check core IPC for package target
+        run: cargo check --locked -p bluelayer-core-snapshot --all-targets --target ${{ matrix.target }}
+
       - name: Install dependencies (ubuntu only)
         if: matrix.os == 'ubuntu-22.04'
         run: |
@@ -214,6 +220,9 @@ jobs:
         run: |
           pnpm i
           pnpm run prebuild ${{ matrix.target }}
+
+      - name: Test packaged core IPC
+        run: node scripts/tests/core-snapshot-smoke.mjs ${{ matrix.target }}
 
       - name: Add Rust Target
         run: |
@@ -337,6 +346,15 @@ jobs:
         run: |
           pnpm i
           pnpm run prebuild ${{ matrix.target }}
+
+      - name: Test native core IPC compatibility
+        run: cargo test --locked -p bluelayer-core-snapshot --lib
+
+      - name: Check core IPC for package target
+        run: cargo check --locked -p bluelayer-core-snapshot --all-targets --target ${{ matrix.target }}
+
+      - name: Test packaged core IPC
+        run: node scripts/tests/core-snapshot-smoke.mjs ${{ matrix.target }}
 
       - name: Download WebView2 Runtime
         run: |

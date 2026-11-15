@@ -680,6 +680,7 @@ dependencies = [
  "backon",
  "base64 0.22.1",
  "bitflags 2.11.1",
+ "bluelayer-core-snapshot",
  "boa_engine",
  "chrono",
  "clash-verge-draft",
@@ -744,6 +745,19 @@ dependencies = [
  "windows 0.62.2",
  "winreg 0.56.0",
  "zip 8.5.1",
+]
+
+[[package]]
+name = "bluelayer-core-snapshot"
+version = "0.1.0"
+dependencies = [
+ "http-body-util",
+ "hyper 1.9.0",
+ "hyper-util",
+ "scopeguard",
+ "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]
