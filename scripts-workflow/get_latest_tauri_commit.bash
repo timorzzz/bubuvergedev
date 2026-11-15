@@ -6,6 +6,8 @@
 # Tauri 相关文件的模式
 TAURI_PATTERNS=(
     "src-tauri/"
+    "crates/"
+    "scripts/"
     "Cargo.toml"
     "Cargo.lock"
     "tauri.*.conf.json"
