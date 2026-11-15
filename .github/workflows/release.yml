@@ -221,6 +221,9 @@ jobs:
           pnpm i
           pnpm run prebuild ${{ matrix.target }}
 
+      - name: Test login network readiness
+        run: node --test scripts/tests/bluelayer-payload.test.mjs scripts/tests/bluelayer-diagnostics.test.mjs scripts/tests/bluelayer-network.test.mjs
+
       - name: Test packaged core IPC
         run: node scripts/tests/core-snapshot-smoke.mjs ${{ matrix.target }}
 
@@ -352,6 +355,9 @@ jobs:
 
       - name: Check core IPC for package target
         run: cargo check --locked -p bluelayer-core-snapshot --all-targets --target ${{ matrix.target }}
+
+      - name: Test login network readiness
+        run: node --test scripts/tests/bluelayer-payload.test.mjs scripts/tests/bluelayer-diagnostics.test.mjs scripts/tests/bluelayer-network.test.mjs
 
       - name: Test packaged core IPC
         run: node scripts/tests/core-snapshot-smoke.mjs ${{ matrix.target }}

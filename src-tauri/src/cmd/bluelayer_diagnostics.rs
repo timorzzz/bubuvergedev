@@ -12,6 +12,7 @@ enum DiagnosticStage {
     CoreReady,
     SubscriptionSync,
     PanelResolve,
+    NetworkCheck,
 }
 
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -25,6 +26,7 @@ enum DiagnosticEvent {
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 enum FailureReason {
+    Offline,
     Timeout,
     Dns,
     Tls,
@@ -77,19 +79,7 @@ pub fn log_bluelayer_http_failure(
         path if path.ends_with("/login.json") => "panel_discovery",
         _ => "subscription_or_other",
     };
-    let reason = error.map_or("http_status", |error| {
-        if error.is_timeout() {
-            "timeout"
-        } else if error.is_connect() {
-            "connection"
-        } else if error.is_decode() {
-            "decode"
-        } else if error.is_body() {
-            "body"
-        } else {
-            "request"
-        }
-    });
+    let reason = error.map_or("http_status", bluelayer_http_failure_reason);
     logging!(
         warn,
         Type::Network,
@@ -102,9 +92,148 @@ pub fn log_bluelayer_http_failure(
     );
 }
 
+fn classify_transport_source(message: &str) -> Option<&'static str> {
+    let message = message.to_ascii_lowercase();
+    if [
+        "dns error",
+        "dns lookup",
+        "failed to lookup",
+        "failed to resolve",
+        "name or service not known",
+        "nodename nor servname",
+        "no such host",
+        "os error 11001",
+        "os error 11004",
+        "temporary failure in name resolution",
+    ]
+    .iter()
+    .any(|pattern| message.contains(pattern))
+    {
+        Some("dns")
+    } else if ["certificate", "tls", "ssl", "invalid peer", "certvalid"]
+        .iter()
+        .any(|pattern| message.contains(pattern))
+    {
+        Some("tls")
+    } else {
+        None
+    }
+}
+
+fn classify_transport_cause(cause: &(dyn std::error::Error + 'static), depth: u8) -> Option<&'static str> {
+    if depth >= 16 {
+        return None;
+    }
+    if cause.is::<tokio_rustls::rustls::Error>() {
+        return Some("tls");
+    }
+    // io::Error::source can skip the contained error itself; inspect get_ref too.
+    if let Some(inner) = cause.downcast_ref::<std::io::Error>().and_then(std::io::Error::get_ref)
+        && let Some(reason) = classify_transport_cause(inner, depth + 1)
+    {
+        return Some(reason);
+    }
+    classify_transport_source(&cause.to_string()).or_else(|| {
+        cause
+            .source()
+            .and_then(|source| classify_transport_cause(source, depth + 1))
+    })
+}
+
+pub fn bluelayer_http_failure_reason(error: &reqwest::Error) -> &'static str {
+    use std::error::Error as _;
+    if error.is_timeout() {
+        return "timeout";
+    }
+    // Reqwest's outer display hides DNS/TLS causes and may include private URLs.
+    if let Some(reason) = error.source().and_then(|cause| classify_transport_cause(cause, 0)) {
+        return reason;
+    }
+    if error.is_connect() {
+        "connection"
+    } else if error.is_decode() {
+        "invalid_payload"
+    } else if error.is_body() {
+        "connection"
+    } else {
+        "request"
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::BluelayerDiagnostic;
+    use super::{BluelayerDiagnostic, bluelayer_http_failure_reason, classify_transport_source};
+
+    #[test]
+    fn transport_sources_use_cross_platform_fixed_categories() {
+        for source in [
+            "dns error: failed to lookup address information",
+            "Name or service not known",
+            "nodename nor servname provided, or not known",
+            "No such host is known. (os error 11001)",
+            "Temporary failure in name resolution",
+        ] {
+            assert_eq!(classify_transport_source(source), Some("dns"));
+        }
+        assert_eq!(
+            classify_transport_source("invalid peer certificate: Expired"),
+            Some("tls")
+        );
+        assert_eq!(classify_transport_source("connection refused"), None);
+    }
+
+    #[tokio::test]
+    async fn native_connect_failure_does_not_return_private_url() -> anyhow::Result<()> {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
+        let address = listener.local_addr()?;
+        drop(listener);
+        let result = reqwest::Client::builder()
+            .no_proxy()
+            .build()?
+            .get(format!("http://{address}/private?token=not-a-real-token"))
+            .timeout(std::time::Duration::from_secs(1))
+            .send()
+            .await;
+        let error = result
+            .err()
+            .ok_or_else(|| anyhow::anyhow!("test server unexpectedly available"))?;
+        let reason = bluelayer_http_failure_reason(&error);
+        assert!(matches!(reason, "connection" | "timeout"));
+        assert!(!reason.contains("private") && !reason.contains("token"));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn native_tls_failure_is_not_collapsed_into_connection() -> anyhow::Result<()> {
+        use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+        let address = listener.local_addr()?;
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await?;
+            let mut bytes = [0; 1024];
+            stream.read_exact(&mut bytes[..1]).await?;
+            stream
+                .write_all(b"HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n")
+                .await?;
+            stream.shutdown().await?;
+            while stream.read(&mut bytes).await? != 0 {}
+            Ok::<(), std::io::Error>(())
+        });
+        scopeguard::defer! { server.abort(); }
+        let result = reqwest::Client::builder()
+            .use_rustls_tls()
+            .no_proxy()
+            .build()?
+            .get(format!("https://{address}/private"))
+            .timeout(std::time::Duration::from_secs(3))
+            .send()
+            .await;
+        let error = result
+            .err()
+            .ok_or_else(|| anyhow::anyhow!("TLS test unexpectedly succeeded"))?;
+        assert_eq!(bluelayer_http_failure_reason(&error), "tls");
+        Ok(())
+    }
 
     #[test]
     fn diagnostic_rejects_free_text_and_unknown_categories() {

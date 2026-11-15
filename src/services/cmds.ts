@@ -15,7 +15,8 @@ export async function writeBluelayerDiagnostic(diagnostic: {
 		| "profile_activate"
 		| "core_ready"
 		| "subscription_sync"
-		| "panel_resolve";
+		| "panel_resolve"
+		| "network_check";
 	event: "failed" | "retry" | "ready";
 	reason?: BluelayerFailureReason;
 	attempt?: number;

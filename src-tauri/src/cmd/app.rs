@@ -129,7 +129,12 @@ async fn send_bluelayer_http_request(
         .inspect_err(|error| {
             super::log_bluelayer_http_failure(url, proxy_url.is_some(), started.elapsed(), None, Some(error));
         })
-        .stringify_err()?;
+        .map_err(|error| {
+            String::from(format!(
+                "bluelayer_http:{}",
+                super::bluelayer_http_failure_reason(&error)
+            ))
+        })?;
     let status = response.status().as_u16();
     if !(200..300).contains(&status) {
         super::log_bluelayer_http_failure(url, proxy_url.is_some(), started.elapsed(), Some(status), None);
@@ -150,7 +155,12 @@ async fn send_bluelayer_http_request(
         .inspect_err(|error| {
             super::log_bluelayer_http_failure(url, proxy_url.is_some(), started.elapsed(), Some(status), Some(error));
         })
-        .stringify_err()?;
+        .map_err(|error| {
+            String::from(format!(
+                "bluelayer_http:{}",
+                super::bluelayer_http_failure_reason(&error)
+            ))
+        })?;
 
     Ok(BluelayerHttpResponse { status, headers, text })
 }

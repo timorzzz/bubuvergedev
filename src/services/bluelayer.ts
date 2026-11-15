@@ -19,7 +19,11 @@ import { queryClient } from "@/services/query-client";
 import {
 	BluelayerOperationError,
 	classifyBluelayerError,
+	classifyPanelConnectionFailure,
+	createPanelPreflight,
+	panelConnectionMessage,
 	waitForProxyReadiness,
+	type PanelConnectionState,
 } from "@/utils/bluelayer-diagnostics";
 import { parseV1Payload } from "@/utils/bluelayer-payload";
 import { version as appVersion } from "@root/package.json";
@@ -131,6 +135,7 @@ type BluelayerState = {
 	session: StoredSession | null;
 	loginUi?: LoginUiConfig | null;
 	nav?: NavItemConfig[] | null;
+	connection: PanelConnectionState;
 };
 
 const defaultState: BluelayerState = {
@@ -140,6 +145,7 @@ const defaultState: BluelayerState = {
 	session: null,
 	loginUi: null,
 	nav: null,
+	connection: { status: "idle" },
 };
 
 let state: BluelayerState = defaultState;
@@ -379,20 +385,25 @@ async function httpText(
 			const payload = parseV1Payload(text);
 			if (typeof payload?.info === "string") info = payload.info.trim();
 		} catch {}
-		throw new Error(
+		throw new BluelayerOperationError(
 			info ||
 				`\u8bf7\u6c42\u5931\u8d25\uff08HTTP ${response.status}\uff09\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5\u3002`,
+			info &&
+				/\/v1\/login$/.test(new URL(url).pathname) &&
+				[400, 401, 403, 422].includes(response.status)
+				? "auth_rejected"
+				: "http",
 		);
 	}
 	return { response, text };
 }
 
-async function fetchLoginConfig(): Promise<LoginConfig> {
+async function fetchLoginConfig(refresh = false): Promise<LoginConfig> {
 	const cached = getCachedRecord<LoginConfig>(
 		BLUELAYER_LOGIN_CONFIG_CACHE_KEY,
 		BLUELAYER_LOGIN_CONFIG_CACHE_TTL,
 	);
-	if (cached?.panels?.length) return cached;
+	if (!refresh && cached?.panels?.length) return cached;
 	if (loginConfigPromise) return loginConfigPromise;
 
 	const parseLoginConfig = (raw: string): LoginConfig => {
@@ -431,8 +442,8 @@ async function fetchLoginConfig(): Promise<LoginConfig> {
 				panels: [normalizeBaseUrl(BLUELAYER_FALLBACK_PANEL_URL)],
 				purchase_path: "/user/shop",
 			};
-			saveCachedRecord(BLUELAYER_LOGIN_CONFIG_CACHE_KEY, fallback);
-			return fallback;
+			// Do not turn a temporary offline fallback into a 30-minute cache.
+			return cached?.panels?.length ? cached : fallback;
 		} finally {
 			loginConfigPromise = null;
 		}
@@ -449,20 +460,40 @@ type FullConfigResponse = {
 
 const configCache = new Map<string, FullConfigResponse>();
 
-async function fetchFullConfig(baseUrl: string): Promise<FullConfigResponse> {
+async function fetchFullConfig(
+	baseUrl: string,
+	verify = false,
+): Promise<FullConfigResponse> {
 	const safeBase = normalizeBaseUrl(baseUrl);
-	if (configCache.has(safeBase)) return configCache.get(safeBase)!;
+	if (!verify && configCache.has(safeBase)) return configCache.get(safeBase)!;
 	const persistedCache = getCachedRecord<Record<string, FullConfigResponse>>(
 		BLUELAYER_FULL_CONFIG_CACHE_KEY,
 		BLUELAYER_FULL_CONFIG_CACHE_TTL,
 	);
 	const persisted = persistedCache?.[safeBase];
-	if (persisted) {
+	if (!verify && persisted) {
 		configCache.set(safeBase, persisted);
 		return persisted;
 	}
 	const { text } = await httpText(`${safeBase}/v1/config`, { timeout: 6000 });
 	const data = JSON.parse(text) as FullConfigResponse;
+	const isObject = (value: unknown) =>
+		value !== null && typeof value === "object" && !Array.isArray(value);
+	if (
+		!isObject(data) ||
+		!(
+			Object.keys(data).length === 0 ||
+			("login" in data && (data.login === null || isObject(data.login))) ||
+			("nav" in data && (data.nav === null || Array.isArray(data.nav))) ||
+			("levelDesc" in data &&
+				(data.levelDesc === null || isObject(data.levelDesc)))
+		)
+	) {
+		throw new BluelayerOperationError(
+			panelConnectionMessage("invalid_payload"),
+			"invalid_payload",
+		);
+	}
 	configCache.set(safeBase, data);
 	saveCachedRecord(BLUELAYER_FULL_CONFIG_CACHE_KEY, {
 		...(persistedCache || {}),
@@ -479,14 +510,18 @@ async function fetchConfigSegment<T = any>(
 	return (data?.[seg] ?? null) as T;
 }
 
-async function resolvePanel(panelIndex?: number) {
-	const config = await fetchLoginConfig();
+async function resolvePanel(
+	panelIndex?: number,
+	{ verify = false, refreshConfig = false } = {},
+) {
+	const config = await fetchLoginConfig(refreshConfig);
 	const panels = config.panels;
 	const cached = getCachedRecord<ResolvedPanel>(
 		BLUELAYER_PANEL_CACHE_KEY,
 		BLUELAYER_PANEL_CACHE_TTL,
 	);
 	if (
+		!verify &&
 		cached &&
 		panels.includes(cached.baseUrl) &&
 		(typeof panelIndex !== "number" || cached.panelIndex === panelIndex)
@@ -507,7 +542,8 @@ async function resolvePanel(panelIndex?: number) {
 		try {
 			const baseUrl = await Promise.any(
 				tryOrder.filter(Boolean).map(async (panel) => {
-					await fetchConfigSegment(panel, "login");
+					// A selection probe must contact the service, not reuse UI config.
+					await fetchFullConfig(panel, true);
 					return panel;
 				}),
 			);
@@ -520,15 +556,13 @@ async function resolvePanel(panelIndex?: number) {
 			saveCachedRecord(BLUELAYER_PANEL_CACHE_KEY, resolved);
 			return resolved;
 		} catch (error) {
+			const reason = classifyPanelConnectionFailure(error);
 			await reportDiagnostic({
 				stage: "panel_resolve",
 				event: "failed",
-				reason: classifyBluelayerError(error),
+				reason,
 			});
-			throw new Error(
-				"\u65e0\u6cd5\u8fde\u63a5\u5230\u53ef\u7528\u9762\u677f",
-				{ cause: error },
-			);
+			throw new BluelayerOperationError(panelConnectionMessage(reason), reason);
 		} finally {
 			panelResolvePromise = null;
 		}
@@ -536,6 +570,38 @@ async function resolvePanel(panelIndex?: number) {
 
 	return panelResolvePromise;
 }
+
+export const checkBluelayerNetwork = createPanelPreflight(
+	async (refreshConfig) => {
+		const resolved = await resolvePanel(undefined, {
+			verify: true,
+			refreshConfig,
+		});
+		const loginUi = configCache.get(resolved.baseUrl)?.login;
+		if (!state.authenticated && loginUi) setState({ loginUi });
+		return resolved;
+	},
+	{
+		isOnline: () =>
+			typeof navigator === "undefined" || navigator.onLine !== false,
+		publish: (connection) => {
+			if (state.authenticated) return;
+			setState({ connection });
+			if (
+				connection.status === "ready" ||
+				connection.status === "unavailable"
+			) {
+				void reportDiagnostic({
+					stage: "network_check",
+					event: connection.status === "ready" ? "ready" : "failed",
+					reason:
+						connection.status === "unavailable" ? connection.reason : undefined,
+					elapsedMs: connection.elapsedMs,
+				});
+			}
+		},
+	},
+);
 
 async function v1Get(baseUrl: string, path: string, cookie?: string) {
 	const { text } = await httpText(`${normalizeBaseUrl(baseUrl)}${path}`, {
@@ -880,10 +946,12 @@ export async function bootstrapBluelayer() {
 					BLUELAYER_PANEL_CACHE_TTL,
 				);
 				const cachedLoginUi = cachedPanel?.baseUrl
-					? await fetchConfigSegment<LoginUiConfig>(
-							cachedPanel.baseUrl,
-							"login",
-						).catch(() => null)
+					? (configCache.get(cachedPanel.baseUrl)?.login ??
+						getCachedRecord<Record<string, FullConfigResponse>>(
+							BLUELAYER_FULL_CONFIG_CACHE_KEY,
+							BLUELAYER_FULL_CONFIG_CACHE_TTL,
+						)?.[cachedPanel.baseUrl]?.login ??
+						null)
 					: null;
 				setState({
 					ready: true,
@@ -892,16 +960,6 @@ export async function bootstrapBluelayer() {
 					session: null,
 					loginUi: cachedLoginUi,
 				});
-				void resolvePanel()
-					.then(({ baseUrl }) =>
-						fetchConfigSegment<LoginUiConfig>(baseUrl, "login").catch(
-							() => null,
-						),
-					)
-					.then((loginUi) => {
-						if (loginUi) setState({ loginUi });
-					})
-					.catch(() => null);
 				return;
 			}
 
@@ -977,16 +1035,42 @@ export async function bootstrapBluelayer() {
 export async function loginBluelayer(username: string, password: string) {
 	setState({ checking: true });
 	try {
+		const connection = state.connection;
+		if (
+			connection.status !== "ready" ||
+			Date.now() - connection.checkedAt > 30_000
+		) {
+			await checkBluelayerNetwork();
+		}
 		const { baseUrl, panelIndex } = await resolvePanel();
 		const [loginUi, nav] = await Promise.all([
 			fetchConfigSegment<LoginUiConfig>(baseUrl, "login").catch(() => null),
 			fetchConfigSegment<NavItemConfig[]>(baseUrl, "nav").catch(() => null),
 		]);
 
-		const result = await v1Post(baseUrl, "/v1/login", { username, password });
+		const result = await v1Post(baseUrl, "/v1/login", {
+			username,
+			password,
+		}).catch((error: unknown) => {
+			if (classifyBluelayerError(error) === "auth_rejected") throw error;
+			const reason = classifyPanelConnectionFailure(
+				error,
+				navigator.onLine !== false,
+			);
+			setState({
+				connection: {
+					status: "unavailable",
+					reason,
+					checkedAt: Date.now(),
+					elapsedMs: 0,
+				},
+			});
+			throw new BluelayerOperationError(panelConnectionMessage(reason), reason);
+		});
 		if (result.payload.code !== 200 || !result.payload.data) {
 			throw new BluelayerOperationError(
-				result.payload.info || "\u767b\u5f55\u5931\u8d25",
+				result.payload.info ||
+					"\u767b\u5f55\u670d\u52a1\u672a\u5b8c\u6210\u9a8c\u8bc1\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5\uff1b\u82e5\u6301\u7eed\u51fa\u73b0\uff0c\u8bf7\u8054\u7cfb\u5ba2\u670d\u3002",
 				"auth_rejected",
 			);
 		}

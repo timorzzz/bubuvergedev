@@ -21,6 +21,7 @@ jobs:
             frontend:
               - 'src/**'
               - '**/*.js'
+              - '**/*.mjs'
               - '**/*.ts'
               - '**/*.tsx'
               - '**/*.css'
@@ -69,6 +70,10 @@ jobs:
       - name: Run ESLint
         if: steps.check_frontend.outputs.frontend == 'true'
         run: pnpm lint
+
+      - name: Test login and network readiness
+        if: steps.check_frontend.outputs.frontend == 'true'
+        run: node --test scripts/tests/bluelayer-payload.test.mjs scripts/tests/bluelayer-diagnostics.test.mjs scripts/tests/bluelayer-network.test.mjs
 
       - name: Run TypeScript typecheck
         if: steps.check_frontend.outputs.frontend == 'true'
