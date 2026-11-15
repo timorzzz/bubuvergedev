@@ -3,7 +3,28 @@ import dayjs from "dayjs";
 import { getProxies, getProxyProviders } from "tauri-plugin-mihomo-api";
 
 import { showNotice } from "@/services/notice-service";
+import type { BluelayerFailureReason } from "@/utils/bluelayer-diagnostics";
 import { debugLog } from "@/utils/debug";
+
+export async function writeBluelayerDiagnostic(diagnostic: {
+	stage:
+		| "login"
+		| "session_restore"
+		| "subscription_download"
+		| "profile_save"
+		| "profile_activate"
+		| "core_ready"
+		| "subscription_sync"
+		| "panel_resolve";
+	event: "failed" | "retry" | "ready";
+	reason?: BluelayerFailureReason;
+	attempt?: number;
+	elapsedMs?: number;
+	groupCount?: number;
+	nodeCount?: number;
+}) {
+	await invoke<void>("write_bluelayer_diagnostic", { diagnostic });
+}
 
 export async function copyClashEnv() {
 	return invoke<void>("copy_clash_env");
@@ -17,8 +38,11 @@ export async function enhanceProfiles() {
 	return invoke<void>("enhance_profiles");
 }
 
-export async function patchProfilesConfig(profiles: IProfilesConfig) {
-	return invoke<boolean>("patch_profiles_config", { profiles });
+export async function patchProfilesConfig(
+	profiles: IProfilesConfig,
+	force = false,
+) {
+	return invoke<boolean>("patch_profiles_config", { profiles, force });
 }
 
 export async function createProfile(

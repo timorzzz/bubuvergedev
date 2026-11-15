@@ -43,6 +43,15 @@ impl CoreManager {
         self.perform_config_update().await
     }
 
+    pub async fn update_config_immediate(&self) -> Result<(bool, String)> {
+        if handle::Handle::global().is_exiting() {
+            return Err(anyhow!("application is exiting"));
+        }
+        // A newly imported managed subscription must not be skipped by the debounce.
+        self.set_last_update(Instant::now());
+        self.perform_config_update().await
+    }
+
     fn should_update_config(&self) -> bool {
         let now = Instant::now();
         let last = self.get_last_update();

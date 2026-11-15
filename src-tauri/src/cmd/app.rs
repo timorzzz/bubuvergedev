@@ -13,7 +13,7 @@ use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use sysproxy::Sysproxy;
 use tauri::webview::PageLoadEvent;
 use tauri::{AppHandle, Listener as _, Manager as _, WebviewUrl, WebviewWindowBuilder};
@@ -96,6 +96,7 @@ async fn send_bluelayer_http_request(
     timeout: Duration,
     proxy_url: Option<&str>,
 ) -> CmdResult<BluelayerHttpResponse> {
+    let started = Instant::now();
     let mut client_builder = reqwest::Client::builder()
         .use_rustls_tls()
         .no_proxy()
@@ -122,8 +123,17 @@ async fn send_bluelayer_http_request(
         builder = builder.body(body.to_string());
     }
 
-    let response = builder.send().await.stringify_err()?;
+    let response = builder
+        .send()
+        .await
+        .inspect_err(|error| {
+            super::log_bluelayer_http_failure(url, proxy_url.is_some(), started.elapsed(), None, Some(error));
+        })
+        .stringify_err()?;
     let status = response.status().as_u16();
+    if !(200..300).contains(&status) {
+        super::log_bluelayer_http_failure(url, proxy_url.is_some(), started.elapsed(), Some(status), None);
+    }
     let headers = response
         .headers()
         .iter()
@@ -134,7 +144,13 @@ async fn send_bluelayer_http_request(
                 .map(|value| (key.as_str().to_string(), value.to_string()))
         })
         .collect();
-    let text = response.text().await.stringify_err()?;
+    let text = response
+        .text()
+        .await
+        .inspect_err(|error| {
+            super::log_bluelayer_http_failure(url, proxy_url.is_some(), started.elapsed(), Some(status), Some(error));
+        })
+        .stringify_err()?;
 
     Ok(BluelayerHttpResponse { status, headers, text })
 }

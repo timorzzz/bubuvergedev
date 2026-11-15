@@ -1,21 +1,26 @@
 import { useSyncExternalStore } from "react";
+import { getProxies } from "tauri-plugin-mihomo-api";
 
 import {
 	bluelayerHttpText,
-	calcuProxies,
 	createProfile,
 	decryptLocalData,
 	deleteProfile,
 	encryptLocalData,
-	enhanceProfiles,
 	getProfiles,
 	openBluelayerPanelWindow,
 	patchVergeConfig,
 	patchProfilesConfig,
 	patchProfile,
 	saveProfileFile,
+	writeBluelayerDiagnostic,
 } from "@/services/cmds";
 import { queryClient } from "@/services/query-client";
+import {
+	BluelayerOperationError,
+	classifyBluelayerError,
+	waitForProxyReadiness,
+} from "@/utils/bluelayer-diagnostics";
 import { parseV1Payload } from "@/utils/bluelayer-payload";
 import { version as appVersion } from "@root/package.json";
 
@@ -143,6 +148,31 @@ let loginConfigPromise: Promise<LoginConfig> | null = null;
 let panelResolvePromise: Promise<ResolvedPanel> | null = null;
 let subscriptionRefreshPromise: Promise<StoredSession> | null = null;
 const listeners = new Set<() => void>();
+
+type Diagnostic = Parameters<typeof writeBluelayerDiagnostic>[0];
+
+async function reportDiagnostic(diagnostic: Diagnostic) {
+	// Diagnostics must never replace the original error or block a successful login.
+	await writeBluelayerDiagnostic(diagnostic).catch(() => {});
+}
+
+async function diagnoseStage<T>(
+	stage: Diagnostic["stage"],
+	task: () => Promise<T>,
+): Promise<T> {
+	const started = performance.now();
+	try {
+		return await task();
+	} catch (error) {
+		await reportDiagnostic({
+			stage,
+			event: "failed",
+			reason: classifyBluelayerError(error),
+			elapsedMs: Math.round(performance.now() - started),
+		});
+		throw error;
+	}
+}
 
 function emit() {
 	listeners.forEach((listener) => listener());
@@ -489,8 +519,16 @@ async function resolvePanel(panelIndex?: number) {
 			};
 			saveCachedRecord(BLUELAYER_PANEL_CACHE_KEY, resolved);
 			return resolved;
-		} catch {
-			throw new Error("\u65e0\u6cd5\u8fde\u63a5\u5230\u53ef\u7528\u9762\u677f");
+		} catch (error) {
+			await reportDiagnostic({
+				stage: "panel_resolve",
+				event: "failed",
+				reason: classifyBluelayerError(error),
+			});
+			throw new Error(
+				"\u65e0\u6cd5\u8fde\u63a5\u5230\u53ef\u7528\u9762\u677f",
+				{ cause: error },
+			);
 		} finally {
 			panelResolvePromise = null;
 		}
@@ -573,7 +611,10 @@ async function fetchSubscriptionText(baseUrl: string, subscriptionUrl: string) {
 	});
 
 	if (!/proxy-groups:|proxies:/i.test(text)) {
-		throw new Error("\u8ba2\u9605\u5185\u5bb9\u4e0d\u5b8c\u6574");
+		throw new BluelayerOperationError(
+			"\u8ba2\u9605\u5185\u5bb9\u4e0d\u5b8c\u6574",
+			"invalid_payload",
+		);
 	}
 
 	return text;
@@ -656,81 +697,104 @@ async function clearManagedProfiles() {
 	]);
 }
 
-async function waitForProxyReady() {
-	for (let index = 0; index < 4; index += 1) {
-		await new Promise((resolve) => setTimeout(resolve, 600));
-		try {
-			const proxyData = await calcuProxies();
-			const hasGroups = (proxyData.groups?.length ?? 0) > 0;
-			const hasGlobal = (proxyData.global?.all?.length ?? 0) > 0;
-			if (hasGroups || hasGlobal) return true;
-		} catch {
-			// retry
-		}
-	}
-	return false;
-}
-
 async function ensureManagedProfile(baseUrl: string, subscriptionUrl: string) {
-	const text = await fetchSubscriptionText(baseUrl, subscriptionUrl);
+	const text = await diagnoseStage("subscription_download", () =>
+		fetchSubscriptionText(baseUrl, subscriptionUrl),
+	);
 	const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
 	const normalizedSubscriptionUrl = resolveManagedSubscriptionUrl(
 		baseUrl,
 		subscriptionUrl,
 	);
 
-	const profiles = await getProfiles();
-	let managed = profiles.items?.find(
-		(item) =>
-			item.desc === BLUELAYER_PROFILE_DESC ||
-			item.name === BLUELAYER_PROFILE_NAME,
-	);
+	const profileUid = await diagnoseStage("profile_save", async () => {
+		const profiles = await getProfiles();
+		let managed = profiles.items?.find(
+			(item) =>
+				item.desc === BLUELAYER_PROFILE_DESC ||
+				item.name === BLUELAYER_PROFILE_NAME,
+		);
 
-	if (managed?.uid) {
-		await saveProfileFile(managed.uid, text);
-		await patchProfile(managed.uid, {
-			name: BLUELAYER_PROFILE_NAME,
-			desc: BLUELAYER_PROFILE_DESC,
-			url: "",
-			home: "",
-		} as any);
-	} else {
-		await createProfile(
-			{
-				type: "local",
+		if (managed?.uid) {
+			await saveProfileFile(managed.uid, text);
+			await patchProfile(managed.uid, {
 				name: BLUELAYER_PROFILE_NAME,
 				desc: BLUELAYER_PROFILE_DESC,
-				option: {
-					with_proxy: false,
-					self_proxy: false,
-					allow_auto_update: false,
-				},
-			} as any,
-			text,
+				url: "",
+				home: "",
+			} as any);
+		} else {
+			await createProfile(
+				{
+					type: "local",
+					name: BLUELAYER_PROFILE_NAME,
+					desc: BLUELAYER_PROFILE_DESC,
+					option: {
+						with_proxy: false,
+						self_proxy: false,
+						allow_auto_update: false,
+					},
+				} as any,
+				text,
+			);
+		}
+
+		const profilesAfterCreate = await getProfiles();
+		managed = profilesAfterCreate.items?.find(
+			(item) =>
+				item.desc === BLUELAYER_PROFILE_DESC ||
+				item.name === BLUELAYER_PROFILE_NAME,
+		);
+
+		if (!managed?.uid) {
+			throw new BluelayerOperationError(
+				"\u521b\u5efa Bluelayer \u8ba2\u9605\u5931\u8d25",
+				"profile_missing",
+			);
+		}
+
+		await clearExtraManagedProfiles();
+		return managed.uid;
+	});
+
+	await diagnoseStage("profile_activate", async () => {
+		const accepted = await patchProfilesConfig(
+			{ current: profileUid } as any,
+			true,
+		);
+		if (!accepted)
+			throw new BluelayerOperationError(
+				"\u8ba2\u9605\u914d\u7f6e\u672a\u80fd\u6fc0\u6d3b\uff0c\u8bf7\u67e5\u770b\u65e5\u5fd7\u540e\u91cd\u8bd5",
+				"activation_rejected",
+			);
+	});
+	const readiness = await waitForProxyReadiness(getProxies);
+	if (!readiness.ready) {
+		await reportDiagnostic({
+			stage: "core_ready",
+			event: "failed",
+			reason: readiness.reason,
+			attempt: readiness.attempts,
+			elapsedMs: readiness.elapsedMs,
+			groupCount: readiness.groupCount,
+			nodeCount: readiness.nodeCount,
+		});
+		throw new BluelayerOperationError(
+			readiness.reason === "empty_proxies"
+				? "\u8ba2\u9605\u5df2\u4fdd\u5b58\uff0c\u4f46\u5185\u6838\u5c1a\u672a\u52a0\u8f7d\u51fa\u53ef\u7528\u7ebf\u8def\uff0c\u8bf7\u67e5\u770b\u65e5\u5fd7\u540e\u91cd\u8bd5\u3002"
+				: "\u8ba2\u9605\u5df2\u4fdd\u5b58\uff0c\u4f46\u6682\u65f6\u65e0\u6cd5\u8bfb\u53d6\u5185\u6838\u7ebf\u8def\uff0c\u8bf7\u67e5\u770b\u65e5\u5fd7\u540e\u91cd\u8bd5\u3002",
+			readiness.reason ?? "unknown",
 		);
 	}
-
-	const profilesAfterCreate = await getProfiles();
-	managed = profilesAfterCreate.items?.find(
-		(item) =>
-			item.desc === BLUELAYER_PROFILE_DESC ||
-			item.name === BLUELAYER_PROFILE_NAME,
-	);
-
-	if (!managed?.uid) {
-		throw new Error("\u521b\u5efa Bluelayer \u8ba2\u9605\u5931\u8d25");
-	}
-
-	await clearExtraManagedProfiles();
-	await patchProfilesConfig({ current: managed.uid } as any);
-	await enhanceProfiles();
-
-	const proxyReady = await waitForProxyReady();
-	if (!proxyReady) {
-		throw new Error(
-			"\u7ebf\u8def\u5c1a\u672a\u52a0\u8f7d\u5b8c\u6210\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5",
-		);
-	}
+	if (readiness.attempts > 1)
+		await reportDiagnostic({
+			stage: "core_ready",
+			event: "ready",
+			attempt: readiness.attempts,
+			elapsedMs: readiness.elapsedMs,
+			groupCount: readiness.groupCount,
+			nodeCount: readiness.nodeCount,
+		});
 
 	await Promise.all([
 		queryClient.invalidateQueries({ queryKey: ["getProfiles"] }),
@@ -744,7 +808,7 @@ async function ensureManagedProfile(baseUrl: string, subscriptionUrl: string) {
 		subscriptionUrl: normalizedSubscriptionUrl,
 	});
 
-	return managed.uid;
+	return profileUid;
 }
 
 async function ensureManagedProfileWithRetry(
@@ -757,6 +821,12 @@ async function ensureManagedProfileWithRetry(
 			return await ensureManagedProfile(baseUrl, subscriptionUrl);
 		} catch (error) {
 			lastError = error;
+			await reportDiagnostic({
+				stage: "subscription_sync",
+				event: attempt < 1 ? "retry" : "failed",
+				reason: classifyBluelayerError(error),
+				attempt: attempt + 1,
+			});
 			if (attempt < 1) {
 				await new Promise((resolve) => setTimeout(resolve, 800));
 			}
@@ -882,7 +952,12 @@ export async function bootstrapBluelayer() {
 				loginUi: runtimeState.loginUi,
 				nav: runtimeState.nav,
 			});
-		} catch {
+		} catch (error) {
+			await reportDiagnostic({
+				stage: "session_restore",
+				event: "failed",
+				reason: classifyBluelayerError(error),
+			});
 			await disableProxyForAuthReset();
 			saveStoredSession(null);
 			setState({
@@ -910,7 +985,10 @@ export async function loginBluelayer(username: string, password: string) {
 
 		const result = await v1Post(baseUrl, "/v1/login", { username, password });
 		if (result.payload.code !== 200 || !result.payload.data) {
-			throw new Error(result.payload.info || "\u767b\u5f55\u5931\u8d25");
+			throw new BluelayerOperationError(
+				result.payload.info || "\u767b\u5f55\u5931\u8d25",
+				"auth_rejected",
+			);
 		}
 
 		const updateLogin = await v1Post(BLUELAYER_UPDATE_BASE_URL, "/v1/login", {
@@ -945,6 +1023,11 @@ export async function loginBluelayer(username: string, password: string) {
 		return session;
 	} catch (error) {
 		setState({ checking: false, ready: true });
+		await reportDiagnostic({
+			stage: "login",
+			event: "failed",
+			reason: classifyBluelayerError(error),
+		});
 		throw error;
 	}
 }
@@ -984,6 +1067,13 @@ export async function refreshBluelayerSubscription() {
 			}
 			setState({ session: nextSession, authenticated: true, ready: true });
 			return nextSession;
+		} catch (error) {
+			await reportDiagnostic({
+				stage: "subscription_sync",
+				event: "failed",
+				reason: classifyBluelayerError(error),
+			});
+			throw error;
 		} finally {
 			subscriptionRefreshPromise = null;
 		}

@@ -342,11 +342,22 @@ async fn handle_timeout(current_profile: Option<&String>) -> CmdResult<bool> {
     Ok(false)
 }
 
-async fn perform_config_update(current_value: Option<&String>, current_profile: Option<&String>) -> CmdResult<bool> {
+async fn perform_config_update(
+    current_value: Option<&String>,
+    current_profile: Option<&String>,
+    force: bool,
+) -> CmdResult<bool> {
     defer! {
         CURRENT_SWITCHING_PROFILE.store(false, Ordering::Release);
     }
-    let update_result = tokio::time::timeout(Duration::from_secs(30), CoreManager::global().update_config()).await;
+    let update_result = tokio::time::timeout(Duration::from_secs(30), async {
+        if force {
+            CoreManager::global().update_config_immediate().await
+        } else {
+            CoreManager::global().update_config().await
+        }
+    })
+    .await;
 
     match update_result {
         Ok(Ok((true, _))) => handle_success(current_value).await,
@@ -358,7 +369,7 @@ async fn perform_config_update(current_value: Option<&String>, current_profile: 
 
 /// 修改profiles的配置
 #[tauri::command]
-pub async fn patch_profiles_config(profiles: IProfiles) -> CmdResult<bool> {
+pub async fn patch_profiles_config(profiles: IProfiles, force: Option<bool>) -> CmdResult<bool> {
     if CURRENT_SWITCHING_PROFILE
         .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
         .is_err()
@@ -385,7 +396,7 @@ pub async fn patch_profiles_config(profiles: IProfiles) -> CmdResult<bool> {
     }
     Config::profiles().await.edit_draft(|d| d.patch_config(&profiles));
 
-    perform_config_update(target_profile, previous_profile.as_ref()).await
+    perform_config_update(target_profile, previous_profile.as_ref(), force.unwrap_or(false)).await
 }
 
 /// 根据profile name修改profiles
@@ -397,7 +408,7 @@ pub async fn patch_profiles_config_by_profile_index(profile_index: String) -> Cm
         current: Some(profile_index),
         items: None,
     };
-    patch_profiles_config(profiles).await
+    patch_profiles_config(profiles, None).await
 }
 
 /// 修改某个profile item的
