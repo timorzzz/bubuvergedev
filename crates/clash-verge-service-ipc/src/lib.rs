@@ -25,3 +25,16 @@ pub static IPC_PATH: &str = r"\\.\pipe\bluelayer-mihomo-service-test";
 pub static IPC_AUTH_EXPECT: &str = r#"Bluelayer service IPC channel; keep traffic isolated."#;
 
 pub static VERSION: &str = env!("CARGO_PKG_VERSION");
+
+pub const MACOS_SERVICE_STARTUP_LOG: &str = "/Library/Logs/Bluelayer/service-startup.log";
+
+#[cfg(all(test, feature = "standalone"))]
+mod tests {
+    #[test]
+    fn launchd_captures_startup_errors_without_dumping_core_stdout() {
+        let plist = include_str!("../resources/launchd.plist.tmpl");
+        assert!(plist.contains(super::MACOS_SERVICE_STARTUP_LOG));
+        assert!(plist.contains("<key>StandardErrorPath</key>"));
+        assert!(!plist.contains("<key>StandardOutPath</key>"));
+    }
+}

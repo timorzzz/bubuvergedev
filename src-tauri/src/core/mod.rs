@@ -6,6 +6,7 @@ pub mod logger;
 pub mod manager;
 mod notification;
 pub mod service;
+pub(crate) mod service_diagnostics;
 pub mod sysopt;
 pub mod timer;
 pub mod tray;

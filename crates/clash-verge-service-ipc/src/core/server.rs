@@ -45,6 +45,8 @@ pub async fn run_ipc_server() -> Result<JoinHandle<Result<()>>> {
             res
         });
         #[cfg(unix)]
+        let mut handle = handle;
+        #[cfg(unix)]
         {
             use crate::IPC_PATH;
             use std::fs::Permissions;
@@ -52,8 +54,17 @@ pub async fn run_ipc_server() -> Result<JoinHandle<Result<()>>> {
             use std::time::Duration;
             use tokio::fs;
 
-            tokio::time::sleep(Duration::from_millis(50)).await;
-            fs::set_permissions(IPC_PATH, Permissions::from_mode(0o777)).await?;
+            // Binding is asynchronous; a fixed sleep can terminate a healthy slow startup.
+            if let Err(error) = super::readiness::wait_for_listener(
+                || fs::set_permissions(IPC_PATH, Permissions::from_mode(0o777)),
+                &mut handle,
+                Duration::from_secs(5),
+            )
+            .await
+            {
+                handle.abort();
+                return Err(error);
+            }
 
             spawn_socket_dir_watchdog();
         }

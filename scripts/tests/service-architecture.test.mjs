@@ -203,6 +203,13 @@ test("Auto Build and Release jobs bind prebuild to the package matrix target", (
 				continue;
 			builds += 1;
 			assert.equal(job.env.BLUELAYER_BUILD_TARGET, "${{ matrix.target }}");
+			assert(
+				job.steps.some(
+					(step) =>
+						step.run ===
+						"cargo test --locked -p clash_verge_service_ipc --features standalone --lib --bin bluelayer-mihomo-service-install",
+				),
+			);
 		}
 		assert.equal(builds, 2);
 	}

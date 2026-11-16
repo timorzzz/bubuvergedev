@@ -178,6 +178,9 @@ jobs:
       - name: Test native core IPC compatibility
         run: cargo test --locked -p bluelayer-core-snapshot --lib
 
+      - name: Test service startup and installation failure handling
+        run: cargo test --locked -p clash_verge_service_ipc --features standalone --lib --bin bluelayer-mihomo-service-install
+
       - name: Check core IPC for package target
         run: cargo check --locked -p bluelayer-core-snapshot --all-targets --target ${{ matrix.target }}
 
@@ -358,6 +361,9 @@ jobs:
 
       - name: Test native core IPC compatibility
         run: cargo test --locked -p bluelayer-core-snapshot --lib
+
+      - name: Test service startup and installation failure handling
+        run: cargo test --locked -p clash_verge_service_ipc --features standalone --lib --bin bluelayer-mihomo-service-install
 
       - name: Check core IPC for package target
         run: cargo check --locked -p bluelayer-core-snapshot --all-targets --target ${{ matrix.target }}

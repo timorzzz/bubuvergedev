@@ -5,6 +5,10 @@ fn main() {
 
 use anyhow::Error;
 
+#[cfg(any(target_os = "macos", test))]
+#[path = "install_service/macos.rs"]
+mod macos;
+
 #[cfg(unix)]
 fn env_u32(key: &str) -> Option<u32> {
     std::env::var(key).ok()?.parse().ok()
@@ -41,6 +45,7 @@ fn main() -> Result<(), Error> {
     use std::env;
     use std::fs::File;
     use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt as _;
     use std::path::Path;
 
     let debug = env::args().any(|arg| arg == "--debug");
@@ -50,6 +55,32 @@ fn main() -> Result<(), Error> {
     if !service_binary_path.exists() {
         return Err(anyhow::anyhow!("bluelayer-mihomo-service binary not found"));
     }
+
+    macos::unload_existing(|args| run_command("/bin/launchctl", args, debug))?;
+
+    let group_name = resolve_service_group_name();
+    let log_dir = Path::new("/Library/Logs/Bluelayer");
+    std::fs::create_dir_all(log_dir)?;
+    if std::fs::symlink_metadata(log_dir)?.file_type().is_symlink() {
+        return Err(anyhow::anyhow!("Service startup log directory must not be a symlink"));
+    }
+    run_command("/usr/sbin/chown", &["root:wheel", log_dir.to_str().unwrap()], debug)?;
+    run_command("/bin/chmod", &["755", log_dir.to_str().unwrap()], debug)?;
+    let startup_log = Path::new(clash_verge_service_ipc::MACOS_SERVICE_STARTUP_LOG);
+    // Reset only startup stderr, not the core traffic log. Refuse symlink targets.
+    std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(true)
+        .write(true)
+        .mode(0o640)
+        .custom_flags(platform_lib::O_NOFOLLOW)
+        .open(startup_log)?;
+    run_command(
+        "/usr/sbin/chown",
+        &[&format!("root:{group_name}"), startup_log.to_str().unwrap()],
+        debug,
+    )?;
+    run_command("/bin/chmod", &["640", startup_log.to_str().unwrap()], debug)?;
 
     // 定义 bundle 路径
     let bundle_path = "/Library/PrivilegedHelperTools/uk.bluelayer.client.service.bundle";
@@ -83,7 +114,7 @@ fn main() -> Result<(), Error> {
 
     let launchd_plist_content = format!(
         include_str!("../../resources/launchd.plist.tmpl"),
-        group_name = resolve_service_group_name()
+        group_name = group_name
     );
 
     File::create(plist_file)
@@ -92,26 +123,19 @@ fn main() -> Result<(), Error> {
 
     // 设置权限
     // 设置 LaunchDaemons plist 权限
-    let _ = run_command("chmod", &["644", plist_file.to_str().unwrap()], debug);
-    let _ = run_command("chown", &["root:wheel", plist_file.to_str().unwrap()], debug);
+    run_command("/bin/chmod", &["644", plist_file.to_str().unwrap()], debug)?;
+    run_command("/usr/sbin/chown", &["root:wheel", plist_file.to_str().unwrap()], debug)?;
 
     // 设置二进制文件权限
-    let _ = run_command("chmod", &["544", &target_binary_path], debug);
-    let _ = run_command("chown", &["root:wheel", &target_binary_path], debug);
+    run_command("/bin/chmod", &["544", &target_binary_path], debug)?;
+    run_command("/usr/sbin/chown", &["root:wheel", &target_binary_path], debug)?;
 
     // 设置 bundle 目录及其内容的权限
-    let _ = run_command("chmod", &["755", bundle_path], debug);
-    let _ = run_command("chown", &["-R", "root:wheel", bundle_path], debug);
+    run_command("/bin/chmod", &["755", bundle_path], debug)?;
+    run_command("/usr/sbin/chown", &["-R", "root:wheel", bundle_path], debug)?;
 
     // 加载和启动服务
-    let _ = run_command("launchctl", &["enable", "system/uk.bluelayer.client.service"], debug);
-    let _ = run_command("launchctl", &["bootout", "system", plist_file.to_str().unwrap()], debug);
-    let _ = run_command(
-        "launchctl",
-        &["bootstrap", "system", plist_file.to_str().unwrap()],
-        debug,
-    );
-    let _ = run_command("launchctl", &["start", "uk.bluelayer.client.service"], debug);
+    macos::start(|args| run_command("/bin/launchctl", args, debug))?;
 
     Ok(())
 }

@@ -10,6 +10,8 @@ mod auth;
 mod logger;
 #[cfg(feature = "standalone")]
 mod manager;
+#[cfg(all(feature = "standalone", any(unix, test)))]
+mod readiness;
 #[cfg(feature = "standalone")]
 mod server;
 #[cfg(feature = "standalone")]

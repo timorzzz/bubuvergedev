@@ -4,7 +4,6 @@ use crate::{
     utils::dirs,
 };
 use anyhow::{Context as _, Result, anyhow, bail};
-use backon::{ConstantBuilder, Retryable as _};
 use clash_verge_logging::{Type, logging, logging_error};
 use clash_verge_service_ipc::CoreConfig;
 use compact_str::CompactString;
@@ -103,6 +102,7 @@ fn install_service() -> Result<()> {
     };
 
     if let Some((code, err)) = check_output_error(&output) {
+        let err = super::service_diagnostics::sanitize(&err);
         logging!(
             error,
             Type::Service,
@@ -274,6 +274,7 @@ fn install_service() -> Result<()> {
     };
 
     if let Some((code, err)) = check_output_error(&output) {
+        let err = super::service_diagnostics::sanitize(&err);
         logging!(
             error,
             Type::Service,
@@ -415,6 +416,7 @@ fn install_service() -> Result<()> {
         .args(vec!["-e", &command])
         .output()?;
     if let Some((code, err)) = check_output_error(&output) {
+        let err = super::service_diagnostics::sanitize(&err);
         logging!(
             error,
             Type::Service,
@@ -612,16 +614,12 @@ pub(crate) async fn stop_core_by_service() -> Result<()> {
 
 /// 检查服务是否正在运行
 pub async fn is_service_available() -> Result<()> {
-    if let Err(e) = Path::metadata(clash_verge_service_ipc::IPC_PATH.as_ref()) {
-        let verge = Config::verge().await;
-        let verge_last = verge.latest_arc();
-        let is_enable = verge_last.enable_tun_mode.unwrap_or(false);
-        if is_enable {
-            logging!(warn, Type::Service, "Some issue with service IPC Path: {}", e);
-        }
-        return Err(e.into());
-    }
-    clash_verge_service_ipc::connect().await?;
+    // A Windows named pipe is not a filesystem entry. Verify the IPC handshake instead.
+    #[cfg(unix)]
+    Path::metadata(clash_verge_service_ipc::IPC_PATH)?;
+    tokio::time::timeout(Duration::from_millis(750), clash_verge_service_ipc::connect())
+        .await
+        .context("Service IPC availability check timed out")??;
     Ok(())
 }
 
@@ -632,27 +630,46 @@ pub async fn wait_and_check_service_available(status: &mut ServiceManager) -> Re
 async fn wait_for_service_ipc(status: &mut ServiceManager, reason: &str) -> Result<()> {
     status.0 = ServiceStatus::Unavailable(reason.into());
     let config = ServiceManager::config();
-
-    let backoff = ConstantBuilder::default()
-        .with_delay(config.retry_delay)
-        .with_max_times(config.max_retries);
-
-    let result = (|| async {
-        if Path::new(clash_verge_service_ipc::IPC_PATH).exists() {
-            clash_verge_service_ipc::connect().await?;
-            Ok(())
-        } else {
-            Err(anyhow!("IPC path not ready"))
+    let started = tokio::time::Instant::now();
+    let deadline = started + Duration::from_secs(15);
+    let mut attempts = 0;
+    let error = loop {
+        attempts += 1;
+        let attempt_deadline = deadline.min(tokio::time::Instant::now() + Duration::from_millis(750));
+        let error = match tokio::time::timeout_at(attempt_deadline, clash_verge_service_ipc::connect()).await {
+            Ok(Ok(_)) => {
+                status.0 = ServiceStatus::Ready;
+                logging!(
+                    info,
+                    Type::Service,
+                    "[ServiceDiag] ipc_ready attempts={} elapsed_ms={}",
+                    attempts,
+                    started.elapsed().as_millis()
+                );
+                return Ok(());
+            }
+            Ok(Err(error)) => error,
+            Err(_) => anyhow!("IPC handshake timed out"),
+        };
+        if tokio::time::Instant::now() >= deadline {
+            break error;
         }
-    })
-    .retry(backoff)
-    .await;
-
-    if result.is_ok() {
-        status.0 = ServiceStatus::Ready;
-    }
-
-    result
+        tokio::time::sleep_until(deadline.min(tokio::time::Instant::now() + config.retry_delay)).await;
+        if tokio::time::Instant::now() >= deadline {
+            break error;
+        }
+    };
+    logging!(
+        error,
+        Type::Service,
+        "[ServiceDiag] ipc_wait_failed attempts={} elapsed_ms={} cause={}",
+        attempts,
+        started.elapsed().as_millis(),
+        super::service_diagnostics::sanitize(&format!("{error:#}"))
+    );
+    let error = error.context("虚拟网卡服务未能在 15 秒内就绪，请检查日志中的 [ServiceDiag] 服务状态");
+    status.0 = ServiceStatus::Unavailable(error.to_string());
+    Err(error)
 }
 
 pub fn is_service_ipc_path_exists() -> bool {
@@ -702,6 +719,21 @@ impl ServiceManager {
 
     /// 根据服务状态执行相应操作
     pub async fn handle_service_status(&mut self, status: &ServiceStatus) -> Result<()> {
+        let result = self.apply_service_status(status).await;
+        if let Err(error) = &result {
+            let operation = match status {
+                ServiceStatus::InstallRequired => "install",
+                ServiceStatus::UninstallRequired => "uninstall",
+                ServiceStatus::ForceReinstallRequired => "repair",
+                ServiceStatus::NeedsReinstall | ServiceStatus::ReinstallRequired => "reinstall",
+                _ => "check",
+            };
+            super::service_diagnostics::log_failure(operation, error).await;
+        }
+        result
+    }
+
+    async fn apply_service_status(&mut self, status: &ServiceStatus) -> Result<()> {
         match status {
             ServiceStatus::Ready => {
                 logging!(info, Type::Service, "服务就绪，直接启动");
