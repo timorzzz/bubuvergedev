@@ -232,6 +232,9 @@ jobs:
       - name: Test packaged core IPC
         run: node scripts/tests/core-snapshot-smoke.mjs ${{ matrix.target }}
 
+      - name: Check application platform-specific service types
+        run: node scripts/tests/platform-service-check.mjs ${{ matrix.target }}
+
       - name: Add Rust Target
         run: |
           # Ensure cross target is installed for the pinned toolchain; fallback without explicit toolchain if needed
@@ -371,6 +374,9 @@ jobs:
 
       - name: Test packaged core IPC
         run: node scripts/tests/core-snapshot-smoke.mjs ${{ matrix.target }}
+
+      - name: Check application platform-specific service types
+        run: node scripts/tests/platform-service-check.mjs ${{ matrix.target }}
 
       - name: Download WebView2 Runtime
         run: |

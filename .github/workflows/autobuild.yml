@@ -229,6 +229,9 @@ jobs:
       - name: Test packaged core IPC
         run: node scripts/tests/core-snapshot-smoke.mjs ${{ matrix.target }}
 
+      - name: Check application platform-specific service types
+        run: node scripts/tests/platform-service-check.mjs ${{ matrix.target }}
+
       - name: Release ${{ env.TAG_CHANNEL }} Version
         run: pnpm release-version autobuild-latest
 
@@ -373,6 +376,9 @@ jobs:
 
       - name: Test packaged core IPC
         run: node scripts/tests/core-snapshot-smoke.mjs ${{ matrix.target }}
+
+      - name: Check application platform-specific service types
+        run: node scripts/tests/platform-service-check.mjs ${{ matrix.target }}
 
       - name: Release ${{ env.TAG_CHANNEL }} Version
         run: pnpm release-version autobuild-latest

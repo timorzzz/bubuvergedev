@@ -616,7 +616,7 @@ pub(crate) async fn stop_core_by_service() -> Result<()> {
 pub async fn is_service_available() -> Result<()> {
     // A Windows named pipe is not a filesystem entry. Verify the IPC handshake instead.
     #[cfg(unix)]
-    Path::metadata(clash_verge_service_ipc::IPC_PATH)?;
+    Path::new(clash_verge_service_ipc::IPC_PATH).metadata()?;
     tokio::time::timeout(Duration::from_millis(750), clash_verge_service_ipc::connect())
         .await
         .context("Service IPC availability check timed out")??;

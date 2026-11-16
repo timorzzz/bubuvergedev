@@ -207,6 +207,13 @@ test("Auto Build and Release jobs bind prebuild to the package matrix target", (
 				job.steps.some(
 					(step) =>
 						step.run ===
+						"node scripts/tests/platform-service-check.mjs ${{ matrix.target }}",
+				),
+			);
+			assert(
+				job.steps.some(
+					(step) =>
+						step.run ===
 						"cargo test --locked -p clash_verge_service_ipc --features standalone --lib --bin bluelayer-mihomo-service-install",
 				),
 			);

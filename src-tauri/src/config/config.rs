@@ -310,6 +310,10 @@ fn remove_config_key(config: &mut Mapping, key: &'static str, reason: &'static s
 }
 
 fn sanitize_platform_inbounds(config: &mut Mapping) {
+    // Linux supports both inbound types; preserve its configuration unchanged.
+    #[cfg(target_os = "linux")]
+    let _ = config;
+
     #[cfg(target_os = "windows")]
     remove_config_key(config, "redir-port", "mihomo redir inbound is not supported on Windows");
 
