@@ -161,6 +161,8 @@ jobs:
             target: x86_64-unknown-linux-gnu
 
     runs-on: ${{ matrix.os }}
+    env:
+      BLUELAYER_BUILD_TARGET: ${{ matrix.target }}
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v6
@@ -222,7 +224,7 @@ jobs:
           pnpm run prebuild ${{ matrix.target }}
 
       - name: Test login network readiness
-        run: node --test scripts/tests/bluelayer-payload.test.mjs scripts/tests/bluelayer-diagnostics.test.mjs scripts/tests/bluelayer-network.test.mjs
+        run: node --test scripts/tests/bluelayer-payload.test.mjs scripts/tests/bluelayer-diagnostics.test.mjs scripts/tests/bluelayer-network.test.mjs scripts/tests/service-architecture.test.mjs
 
       - name: Test packaged core IPC
         run: node scripts/tests/core-snapshot-smoke.mjs ${{ matrix.target }}
@@ -311,6 +313,8 @@ jobs:
             target: x86_64-pc-windows-msvc
             arch: x64
     runs-on: ${{ matrix.os }}
+    env:
+      BLUELAYER_BUILD_TARGET: ${{ matrix.target }}
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v6
@@ -357,7 +361,7 @@ jobs:
         run: cargo check --locked -p bluelayer-core-snapshot --all-targets --target ${{ matrix.target }}
 
       - name: Test login network readiness
-        run: node --test scripts/tests/bluelayer-payload.test.mjs scripts/tests/bluelayer-diagnostics.test.mjs scripts/tests/bluelayer-network.test.mjs
+        run: node --test scripts/tests/bluelayer-payload.test.mjs scripts/tests/bluelayer-diagnostics.test.mjs scripts/tests/bluelayer-network.test.mjs scripts/tests/service-architecture.test.mjs
 
       - name: Test packaged core IPC
         run: node scripts/tests/core-snapshot-smoke.mjs ${{ matrix.target }}
