@@ -244,3 +244,29 @@ test("bundle hook validates resources again after lifecycle scripts have finishe
 	);
 	assert("beforeBundleCommand" in schema.definitions.BuildConfig.properties);
 });
+
+test("macOS listener regression runs with the actual package target", () => {
+	for (const workflow of ["autobuild", "release"]) {
+		const config = yaml.load(
+			readFileSync(
+				new URL(`../../.github/workflows/${workflow}.yml`, import.meta.url),
+				"utf8",
+			),
+		);
+		const jobs = Object.values(config.jobs).filter((job) =>
+			job.strategy?.matrix?.include?.some(
+				(entry) => entry.os === "macos-latest",
+			),
+		);
+		assert.equal(jobs.length, 1);
+		const step = jobs[0].steps.find(
+			(step) => step.name === "Test packaged macOS service IPC listener",
+		);
+		assert(step);
+		assert.equal(step.if, "matrix.os == 'macos-latest'");
+		assert.equal(
+			step.run,
+			"cargo test --locked -p clash_verge_service_ipc --features standalone --lib --target ${{ matrix.target }} core::server::tests::configured_listener_serves_authenticated_version -- --exact",
+		);
+	}
+});

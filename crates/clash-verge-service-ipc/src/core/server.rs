@@ -232,24 +232,29 @@ pub fn spawn_socket_dir_watchdog() {
 }
 
 async fn init_ipc_state() -> Result<()> {
-    let server = create_ipc_server()?;
+    let server = create_ipc_server(crate::IPC_PATH)?;
     let router = create_ipc_router()?;
     let server = server.router(router);
     IpcState::global().lock().await.set_server(server).await;
     Ok(())
 }
 
-fn create_ipc_server() -> Result<IpcHttpServer> {
-    use crate::IPC_PATH;
+fn create_ipc_server(path: impl AsRef<std::path::Path>) -> Result<IpcHttpServer> {
+    let server = IpcHttpServer::new(path)?;
 
-    let server = IpcHttpServer::new(IPC_PATH)?;
-
-    #[cfg(unix)]
+    #[cfg(all(unix, not(target_os = "macos")))]
     {
         use platform_lib::{S_IRGRP, S_IRUSR, S_IWGRP, S_IWUSR, mode_t};
 
         let mode: mode_t = platform_lib::mode_t::from(S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
         let server = server.with_listener_mode(mode);
+        Ok(server)
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        // Listener mode uses pre-bind fchmod, unsupported on macOS. Keep the existing
+        // umask/directory restrictions and post-bind socket permission handling instead.
         Ok(server)
     }
 
@@ -391,3 +396,7 @@ fn create_ipc_router() -> Result<Router> {
         });
     Ok(router)
 }
+
+#[cfg(test)]
+#[path = "server_tests.rs"]
+mod tests;
