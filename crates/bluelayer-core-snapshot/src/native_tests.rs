@@ -83,6 +83,11 @@ fn permission_errors_are_sanitized() {
 async fn reads_native_ipc_chunked_proxies_and_providers() -> TestResult {
     for (kind, body, field) in [
         (
+            CoreSnapshotKind::Config,
+            r#"{"mode":"global","mixed-port":17897,"tun":{"enable":false,"stack":"future-stack"}}"#,
+            "tun",
+        ),
+        (
             CoreSnapshotKind::Proxies,
             r#"{"proxies":{"node":{"type":"Socks5"},"group":{"name":"group","type":"Selector","all":["node","DIRECT"],"now":"node"}}}"#,
             "proxies",
@@ -320,5 +325,7 @@ async fn reads_real_mihomo_snapshot() -> TestResult {
     assert_eq!(value["proxies"]["test-group"]["all"], json!(["test-node", "DIRECT"]));
     let providers = read_snapshot_at(&socket, CoreSnapshotKind::Providers).await?;
     assert!(providers["providers"].is_object());
+    let config = read_snapshot_at(&socket, CoreSnapshotKind::Config).await?;
+    assert_eq!(config["mode"], "rule");
     Ok(())
 }

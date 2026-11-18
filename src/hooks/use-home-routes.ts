@@ -387,8 +387,8 @@ export const useHomeRoutes = () => {
   ])
 
   const currentNode = useMemo(
-    () => state.selection.proxy || routeOptions[0]?.name || '',
-    [routeOptions, state.selection.proxy],
+    () => state.selection.proxy,
+    [state.selection.proxy],
   )
 
   const changeGroup = useCallback(
@@ -454,6 +454,10 @@ export const useHomeRoutes = () => {
     const currentGroup = state.selection.group
     const previousProxy = state.selection.proxy
 
+    if (!currentGroup || !await changeProxy(currentGroup, newProxy, previousProxy)) {
+      return false
+    }
+
     setState((prev) => ({
       ...prev,
       selection: {
@@ -467,12 +471,6 @@ export const useHomeRoutes = () => {
       writeProfileScopedItem(STORAGE_KEY_PROXY, newProxy)
     }
 
-    changeProxy(
-      currentGroup,
-      newProxy,
-      previousProxy,
-      isGlobalMode || isDirectMode,
-    )
     return true
   })
 
@@ -483,7 +481,9 @@ export const useHomeRoutes = () => {
       routeOptions[0]?.name ||
       ''
 
-    if (!targetProxy) return false
+    if (!targetProxy || !await changeProxy(
+      'GLOBAL', targetProxy, normalizePolicyName(proxies?.global?.now),
+    )) return false
 
     setState((prev) => ({
       ...prev,
@@ -495,12 +495,6 @@ export const useHomeRoutes = () => {
       displayProxy: prev.proxyData.records[targetProxy] || null,
     }))
 
-    changeProxy(
-      'GLOBAL',
-      targetProxy,
-      normalizePolicyName(proxies?.global?.now),
-      true,
-    )
     return true
   })
 

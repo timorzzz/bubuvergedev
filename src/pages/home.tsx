@@ -19,7 +19,6 @@ import {
 import { useTheme } from '@mui/material/styles'
 import { useLockFn } from 'ahooks'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { closeAllConnections } from 'tauri-plugin-mihomo-api'
 
 import { BasePage } from '@/components/base'
 import { HomeRouteOption, useHomeRoutes } from '@/hooks/use-home-routes'
@@ -223,6 +222,7 @@ const HomePage = () => {
   const [isRetestingLatency, setIsRetestingLatency] = useState(false)
   const [isRefreshingRoutes, setIsRefreshingRoutes] = useState(false)
   const [isTogglingProtection, setIsTogglingProtection] = useState(false)
+  const [pendingMode, setPendingMode] = useState<'rule' | 'global' | null>(null)
   const [groupPanelOpen, setGroupPanelOpen] = useState(false)
   const [routePanelOpen, setRoutePanelOpen] = useState(false)
   const groupPanelRef = useRef<HTMLDivElement | null>(null)
@@ -274,10 +274,9 @@ const HomePage = () => {
   }, [groupPanelOpen, routePanelOpen])
 
   const currentNode = normalizeLabel(
-    routeCurrentNode || routeOptions[0]?.name || '未选择线路',
+    routeCurrentNode || '未选择线路',
   )
-  const currentMode =
-    clashConfig?.mode?.toLowerCase() === 'global' ? 'global' : 'rule'
+  const currentMode = clashConfig?.mode?.toLowerCase() || ''
   const activeRouteName = normalizeLabel(
     currentNode || routeOptions[0]?.name,
   )
@@ -285,8 +284,7 @@ const HomePage = () => {
   const activeRoute = useMemo(
     () =>
       routeOptions.find((item) => item.name === activeRouteName) ||
-      routeOptions.find((item) => item.name === currentNode) ||
-      routeOptions[0],
+      routeOptions.find((item) => item.name === currentNode),
     [activeRouteName, currentNode, routeOptions],
   )
   const activeRouteDelay = activeRoute?.delay ?? -1
@@ -361,18 +359,25 @@ const HomePage = () => {
   ])
 
   const onChangeClashMode = useLockFn(async (mode: 'rule' | 'global') => {
-    if (mode === currentMode || isPreparingRoutes) return
-
-    if (verge?.auto_close_connection) {
-      closeAllConnections()
+    if (isPreparingRoutes) return
+    setPendingMode(mode)
+    try {
+      // The command verifies the real core state, including same-mode retries.
+      await patchClashMode(
+        mode,
+        currentMode === 'rule' && mode === 'global' ? routeCurrentNode : undefined,
+      )
+      await Promise.all([refreshClashConfig(), refreshProxy()])
+    } catch (error) {
+      showNotice.error('代理模式切换失败', error)
+      await refreshClashConfig()
+    } finally {
+      setPendingMode(null)
     }
-
-    await patchClashMode(mode)
-    refreshClashConfig()
   })
 
   const onToggleTunMode = useLockFn(async (nextValue?: boolean) => {
-    if (isPreparingRoutes) return
+    if (isPreparingRoutes || pendingMode) return
 
     const target = typeof nextValue === 'boolean' ? nextValue : !Boolean(verge?.enable_tun_mode)
 
@@ -397,7 +402,7 @@ const HomePage = () => {
   })
 
   const onSelectRoute = useLockFn(async (item: HomeRouteOption) => {
-    if (isPreparingRoutes) return
+    if (isPreparingRoutes || pendingMode) return
 
     const ready =
       currentMode === 'global'
@@ -523,7 +528,8 @@ const HomePage = () => {
 
             <Box sx={{ justifySelf: 'center', display: 'inline-flex', alignItems: 'center', gap: 0.8, pb: 2.1, borderBottom: '1px dashed rgba(19, 31, 53, 0.12)' }}>
               {[{ key: 'rule' as const, label: '\u667a\u80fd\u4ee3\u7406' }, { key: 'global' as const, label: '\u5168\u5c40\u4ee3\u7406' }].map((mode) => (
-                <Box key={mode.key} onClick={() => void onChangeClashMode(mode.key)} sx={{ minWidth: 86, px: 1.8, py: 0.75, textAlign: 'center', fontSize: 14, fontWeight: 700, cursor: 'pointer', border: '1px solid rgba(19, 31, 53, 0.16)', background: currentMode === mode.key ? '#2688ea' : '#ffffff', color: currentMode === mode.key ? '#ffffff' : '#394559' }}>
+                <Box component="button" type="button" key={mode.key} disabled={Boolean(pendingMode) || isPreparingRoutes} aria-pressed={currentMode === mode.key} aria-busy={pendingMode === mode.key} onClick={() => void onChangeClashMode(mode.key)} sx={{ minWidth: 86, px: 1.8, py: 0.75, textAlign: 'center', fontFamily: 'inherit', fontSize: 14, fontWeight: 700, cursor: pendingMode ? 'wait' : 'pointer', border: '1px solid rgba(19, 31, 53, 0.16)', background: currentMode === mode.key ? '#2688ea' : '#ffffff', color: currentMode === mode.key ? '#ffffff' : '#394559' }}>
+                  {pendingMode === mode.key && <CircularProgress size={10} color="inherit" sx={{ mr: 0.5 }} />}
                   {mode.label}
                 </Box>
               ))}

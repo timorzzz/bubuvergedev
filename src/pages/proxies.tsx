@@ -3,18 +3,17 @@ import { Box, Button, ButtonGroup } from '@mui/material'
 import { useLockFn } from 'ahooks'
 import { useCallback, useEffect, useMemo, useReducer, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { closeAllConnections } from 'tauri-plugin-mihomo-api'
 
 import { BasePage } from '@/components/base'
 import { ProviderButton } from '@/components/proxy/provider-button'
 import { ProxyGroups } from '@/components/proxy/proxy-groups'
-import { useVerge } from '@/hooks/use-verge'
 import { useAppData } from '@/providers/app-data-context'
 import {
   getRuntimeProxyChainConfig,
   patchClashMode,
   updateProxyChainConfigInRuntime,
 } from '@/services/cmds'
+import { showNotice } from '@/services/notice-service'
 import { debugLog } from '@/utils/debug'
 
 const MODES = ['rule', 'global', 'direct'] as const
@@ -46,7 +45,6 @@ const ProxyPage = () => {
   const updateChainConfigData = useCallback((value: string | null) => {
     dispatchChainConfigData(value)
   }, [])
-  const { verge } = useVerge()
 
   const modeList = useMemo(() => MODES, [])
 
@@ -54,12 +52,13 @@ const ProxyPage = () => {
   const curMode = isMode(normalizedMode) ? normalizedMode : undefined
 
   const onChangeMode = useLockFn(async (mode: Mode) => {
-    // 断开连接
-    if (mode !== curMode && verge?.auto_close_connection) {
-      closeAllConnections()
+    try {
+      await patchClashMode(mode)
+      await refreshClashConfig()
+    } catch (error) {
+      showNotice.error('代理模式切换失败', error)
+      await refreshClashConfig()
     }
-    await patchClashMode(mode)
-    refreshClashConfig()
   })
 
   const onToggleChainMode = useLockFn(async () => {

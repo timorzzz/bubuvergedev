@@ -116,21 +116,21 @@ impl Hotkey {
                 });
             }
             HotkeyFunction::ClashModeRule => {
-                AsyncHandler::spawn(async move || {
-                    feat::change_clash_mode("rule".into()).await;
-                    notify_event(NotificationEvent::ClashModeChanged { mode: "Rule" }).await;
+                AsyncHandler::spawn(async move || match feat::change_clash_mode("rule".into()).await {
+                    Ok(()) => notify_event(NotificationEvent::ClashModeChanged { mode: "Rule" }).await,
+                    Err(error) => handle::Handle::notice_message("set_config::error", error.to_string()),
                 });
             }
             HotkeyFunction::ClashModeGlobal => {
-                AsyncHandler::spawn(async move || {
-                    feat::change_clash_mode("global".into()).await;
-                    notify_event(NotificationEvent::ClashModeChanged { mode: "Global" }).await;
+                AsyncHandler::spawn(async move || match feat::change_clash_mode("global".into()).await {
+                    Ok(()) => notify_event(NotificationEvent::ClashModeChanged { mode: "Global" }).await,
+                    Err(error) => handle::Handle::notice_message("set_config::error", error.to_string()),
                 });
             }
             HotkeyFunction::ClashModeDirect => {
-                AsyncHandler::spawn(async move || {
-                    feat::change_clash_mode("direct".into()).await;
-                    notify_event(NotificationEvent::ClashModeChanged { mode: "Direct" }).await;
+                AsyncHandler::spawn(async move || match feat::change_clash_mode("direct".into()).await {
+                    Ok(()) => notify_event(NotificationEvent::ClashModeChanged { mode: "Direct" }).await,
+                    Err(error) => handle::Handle::notice_message("set_config::error", error.to_string()),
                 });
             }
             HotkeyFunction::ToggleSystemProxy => {

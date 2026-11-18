@@ -5,9 +5,8 @@ import {
   selectNodeForGroup,
 } from 'tauri-plugin-mihomo-api'
 
-import { useProfiles } from '@/hooks/use-profiles'
 import { useVerge } from '@/hooks/use-verge'
-import { syncTrayProxySelection } from '@/services/cmds'
+import { getMihomoProxies, getProfiles, patchProfile, syncTrayProxySelection } from '@/services/cmds'
 import { debugLog } from '@/utils/debug'
 
 const cleanupConnections = async (previousProxy: string) => {
@@ -39,10 +38,10 @@ interface ProxyChangeRequest {
   proxyName: string
   previousProxy?: string
   skipConfigSave: boolean
+  resolve: (success: boolean) => void
 }
 
 export const useProxySelection = (options: ProxySelectionOptions = {}) => {
-  const { current, patchCurrent } = useProfiles()
   const { verge } = useVerge()
   const pendingRequestRef = useRef<ProxyChangeRequest | null>(null)
   const isProcessingRef = useRef(false)
@@ -64,8 +63,12 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
   }, [])
 
   const persistSelection = useCallback(
-    (groupName: string, proxyName: string, skipConfigSave: boolean) => {
-      if (!current || skipConfigSave) return
+    async (groupName: string, proxyName: string, skipConfigSave: boolean) => {
+      if (skipConfigSave) return
+      // Merge against the latest profile so another group's choice is not lost.
+      const profiles = await getProfiles()
+      const current = profiles.items?.find((item) => item.uid === profiles.current)
+      if (!current) return
 
       const selected = current.selected ? [...current.selected] : []
       const index = selected.findIndex((item) => item.name === groupName)
@@ -76,11 +79,9 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
         selected[index] = { name: groupName, now: proxyName }
       }
 
-      patchCurrent({ selected }).catch((error) => {
-        console.error('[ProxySelection] failed to persist selection:', error)
-      })
+      await patchProfile(current.uid, { selected })
     },
-    [current, patchCurrent],
+    [],
   )
 
   const executeChange = useCallback(
@@ -90,9 +91,17 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
 
       try {
         await selectNodeForGroup(groupName, proxyName)
+        const confirmed = await getMihomoProxies()
+        if (confirmed.proxies[groupName]?.now !== proxyName) {
+          throw new Error('内核未确认线路切换，请刷新后重试')
+        }
+        try {
+          await persistSelection(groupName, proxyName, skipConfigSave)
+        } catch (error) {
+          onError?.(error)
+        }
         onSuccess?.()
         syncTraySelection()
-        persistSelection(groupName, proxyName, skipConfigSave)
 
         if (
           config.enableConnectionCleanup &&
@@ -101,24 +110,15 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
         ) {
           setTimeout(() => cleanupConnections(previousProxy), 0)
         }
+        return true
       } catch (error) {
         console.error(
           `[ProxySelection] failed to switch ${groupName} -> ${proxyName}`,
           error,
         )
 
-        try {
-          await selectNodeForGroup(groupName, proxyName)
-          onSuccess?.()
-          syncTraySelection()
-          persistSelection(groupName, proxyName, skipConfigSave)
-        } catch (fallbackError) {
-          console.error(
-            `[ProxySelection] fallback also failed ${groupName} -> ${proxyName}`,
-            fallbackError,
-          )
-          onError?.(fallbackError)
-        }
+        onError?.(error)
+        return false
       }
     },
     [config, onError, onSuccess, persistSelection, syncTraySelection],
@@ -132,7 +132,11 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
       while (pendingRequestRef.current) {
         const request = pendingRequestRef.current
         pendingRequestRef.current = null
-        await executeChange(request)
+        try {
+          request.resolve(await executeChange(request))
+        } catch {
+          request.resolve(false)
+        }
       }
     } finally {
       isProcessingRef.current = false
@@ -148,15 +152,18 @@ export const useProxySelection = (options: ProxySelectionOptions = {}) => {
       proxyName: string,
       previousProxy?: string,
       skipConfigSave: boolean = false,
-    ) => {
+    ): Promise<boolean> => new Promise((resolve) => {
+      // A superseded queued choice must also settle its caller.
+      pendingRequestRef.current?.resolve(false)
       pendingRequestRef.current = {
         groupName,
         proxyName,
         previousProxy,
         skipConfigSave,
+        resolve,
       }
       void flushChangeQueue()
-    },
+    }),
     [flushChangeQueue],
   )
 

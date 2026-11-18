@@ -233,6 +233,12 @@ jobs:
       - name: Test packaged core IPC
         run: node scripts/tests/core-snapshot-smoke.mjs ${{ matrix.target }}
 
+      - name: Test proxy mode feedback and real traffic recovery
+        run: |
+          node --test scripts/tests/mode-routing.test.mjs
+          cargo test --locked -p bluelayer --no-default-features --lib feat::clash_mode::tests
+          node scripts/tests/mode-routing-smoke.mjs ${{ matrix.target }}
+
       - name: Check application platform-specific service types
         run: node scripts/tests/platform-service-check.mjs ${{ matrix.target }}
 
@@ -380,6 +386,12 @@ jobs:
 
       - name: Test packaged core IPC
         run: node scripts/tests/core-snapshot-smoke.mjs ${{ matrix.target }}
+
+      - name: Test proxy mode feedback and real traffic recovery
+        run: |
+          node --test scripts/tests/mode-routing.test.mjs
+          cargo test --locked -p bluelayer --no-default-features --lib feat::clash_mode::tests
+          node scripts/tests/mode-routing-smoke.mjs ${{ matrix.target }}
 
       - name: Check application platform-specific service types
         run: node scripts/tests/platform-service-check.mjs ${{ matrix.target }}

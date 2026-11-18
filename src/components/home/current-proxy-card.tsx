@@ -35,7 +35,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router'
 import {
-  closeAllConnections,
   delayGroup,
   healthcheckProxyProvider,
 } from 'tauri-plugin-mihomo-api'
@@ -47,6 +46,7 @@ import { useVerge } from '@/hooks/use-verge'
 import { useAppData } from '@/providers/app-data-context'
 import { patchClashMode } from '@/services/cmds'
 import delayManager from '@/services/delay'
+import { showNotice } from '@/services/notice-service'
 import { debugLog } from '@/utils/debug'
 
 // 本地存储的键名
@@ -940,18 +940,13 @@ export const CurrentProxyCard = () => {
   )
 
   const onChangeMode = useLockFn(async (mode: ClashMode) => {
-    if (mode === currentModeKey) return
-
-    if (verge?.auto_close_connection) {
-      closeAllConnections()
-    }
-
     try {
       await patchClashMode(mode)
       refreshClashConfig()
       refreshProxy()
     } catch (error) {
-      console.error('Failed to change mode:', error)
+      showNotice.error('代理模式切换失败', error)
+      await refreshClashConfig()
     }
   })
 

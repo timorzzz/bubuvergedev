@@ -1,5 +1,6 @@
 mod backup;
 mod clash;
+mod clash_mode;
 mod config;
 mod icon;
 mod profile;

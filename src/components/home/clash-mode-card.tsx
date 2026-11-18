@@ -7,11 +7,10 @@ import { Box, Paper, Stack, Typography } from '@mui/material'
 import { useLockFn } from 'ahooks'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { closeAllConnections } from 'tauri-plugin-mihomo-api'
 
-import { useVerge } from '@/hooks/use-verge'
 import { useAppData } from '@/providers/app-data-context'
 import { patchClashMode } from '@/services/cmds'
+import { showNotice } from '@/services/notice-service'
 import type { TranslationKey } from '@/types/generated/i18n-keys'
 
 const CLASH_MODES = ['rule', 'global', 'direct'] as const
@@ -40,7 +39,6 @@ const MODE_META: Record<
 
 export const ClashModeCard = () => {
   const { t } = useTranslation()
-  const { verge } = useVerge()
   const { clashConfig, isCoreDataPending, refreshClashConfig } = useAppData()
 
   // 支持的模式列表
@@ -75,17 +73,13 @@ export const ClashModeCard = () => {
 
   // 切换模式的处理函数
   const onChangeMode = useLockFn(async (mode: ClashMode) => {
-    if (mode === currentModeKey) return
-    if (verge?.auto_close_connection) {
-      closeAllConnections()
-    }
-
     try {
       await patchClashMode(mode)
       // 使用共享的刷新方法
       refreshClashConfig()
     } catch (error) {
-      console.error('Failed to change mode:', error)
+      showNotice.error('代理模式切换失败', error)
+      await refreshClashConfig()
     }
   })
 

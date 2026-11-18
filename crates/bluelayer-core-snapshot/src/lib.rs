@@ -5,11 +5,14 @@ use serde_json::{Value, json};
 use std::{fmt, io, time::Duration};
 use tokio::io::{AsyncRead, AsyncWrite};
 
+pub mod routing;
+
 #[derive(Clone, Copy, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CoreSnapshotKind {
     Proxies,
     Providers,
+    Config,
 }
 
 impl CoreSnapshotKind {
@@ -17,6 +20,7 @@ impl CoreSnapshotKind {
         match self {
             Self::Proxies => "/proxies",
             Self::Providers => "/providers/proxies",
+            Self::Config => "/configs",
         }
     }
 }
@@ -147,6 +151,15 @@ fn normalize_proxy(value: &mut Value, fallback_name: Option<&str>) -> Result<(),
 
 pub fn normalize_snapshot(mut value: Value, kind: CoreSnapshotKind) -> Result<Value, SnapshotError> {
     match kind {
+        CoreSnapshotKind::Config => {
+            let config = value.as_object().ok_or(SnapshotError::InvalidShape)?;
+            if !matches!(
+                config.get("mode").and_then(Value::as_str),
+                Some("rule" | "global" | "direct")
+            ) {
+                return Err(SnapshotError::InvalidShape);
+            }
+        }
         CoreSnapshotKind::Proxies => {
             let proxies = value
                 .get_mut("proxies")
@@ -180,6 +193,24 @@ pub fn normalize_snapshot(mut value: Value, kind: CoreSnapshotKind) -> Result<Va
 mod tests {
     use super::{CoreSnapshotKind, SnapshotError, normalize_snapshot};
     use serde_json::json;
+
+    #[test]
+    fn config_mode_is_required_but_optional_schema_fields_are_not() -> Result<(), SnapshotError> {
+        for mode in ["rule", "global", "direct"] {
+            let value = normalize_snapshot(
+                json!({"mode": mode, "tun": {"stack": "future-stack"}}),
+                CoreSnapshotKind::Config,
+            )?;
+            assert_eq!(value["mode"], mode);
+        }
+        for value in [json!(null), json!([]), json!({}), json!({"mode": "unknown"})] {
+            assert_eq!(
+                normalize_snapshot(value, CoreSnapshotKind::Config),
+                Err(SnapshotError::InvalidShape)
+            );
+        }
+        Ok(())
+    }
 
     #[test]
     fn accepts_new_protocols_and_optional_metadata() -> Result<(), SnapshotError> {

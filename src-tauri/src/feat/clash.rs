@@ -65,36 +65,137 @@ fn after_change_clash_mode() {
     });
 }
 
-/// Change Clash mode (rule/global/direct/script)
-pub async fn change_clash_mode(mode: String) {
-    let mut mapping = Mapping::new();
-    mapping.insert(Value::from("mode"), Value::from(mode.as_str()));
-    // Convert YAML mapping to JSON Value
-    let json_value = serde_json::json!({
-        "mode": mode
-    });
-    logging!(debug, Type::Core, "change clash mode to {mode}");
-    match handle::Handle::mihomo().await.patch_base_config(&json_value).await {
-        Ok(_) => {
-            // 更新订阅
-            let clash = Config::clash().await;
-            clash.edit_draft(|d| d.patch_config(&mapping));
-            clash.apply();
+/// All UI, tray and hotkey entry points use the same verified mode transaction.
+pub async fn change_clash_mode(mode: String) -> anyhow::Result<()> {
+    change_clash_mode_with_proxy(mode, None).await.map(|_| ())
+}
 
-            // 分离数据获取和异步调用
-            let clash_data = clash.data_arc();
-            if clash_data.save_config().await.is_ok() {
-                handle::Handle::refresh_clash();
-                tray::Tray::global().update_menu_and_icon().await;
+async fn save_global_choice(target: &str) -> anyhow::Result<()> {
+    Config::profiles()
+        .await
+        .with_data_modify(|mut profiles| async move {
+            if let Some(current) = profiles.current.as_deref()
+                && let Some(item) = profiles
+                    .items
+                    .as_mut()
+                    .and_then(|items| items.iter_mut().find(|item| item.uid.as_deref() == Some(current)))
+            {
+                let selected = item.selected.get_or_insert_with(Vec::new);
+                if let Some(entry) = selected
+                    .iter_mut()
+                    .find(|entry| entry.name.as_deref() == Some("GLOBAL"))
+                {
+                    entry.now = Some(target.into());
+                } else {
+                    selected.push(crate::config::PrfSelected {
+                        name: Some("GLOBAL".into()),
+                        now: Some(target.into()),
+                    });
+                }
+                profiles.save_file().await?;
             }
+            Ok((profiles, ()))
+        })
+        .await
+}
 
-            let is_auto_close_connection = Config::verge().await.data_arc().auto_close_connection.unwrap_or(false);
-            if is_auto_close_connection {
+pub async fn change_clash_mode_with_proxy(
+    mode: String,
+    preferred_proxy: Option<String>,
+) -> anyhow::Result<serde_json::Value> {
+    use super::clash_mode::{NativeModeApi, apply_mode};
+    static MODE_CHANGE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+    let _guard = MODE_CHANGE.lock().await;
+    if !matches!(mode.as_str(), "rule" | "global" | "direct") {
+        anyhow::bail!("不支持的代理模式");
+    }
+    let preferences = {
+        let runtime = Config::runtime().await.latest_arc();
+        let mut names = Vec::<std::string::String>::new();
+        if let Some(config) = &runtime.config {
+            if let Some(rules) = config.get("rules").and_then(Value::as_sequence) {
+                for rule in rules.iter().rev().filter_map(Value::as_str) {
+                    if let Some((kind, policy)) = rule.split_once(',')
+                        && matches!(kind, "MATCH" | "FINAL")
+                    {
+                        names.push(policy.trim().to_owned());
+                        break;
+                    }
+                }
+            }
+            if let Some(groups) = config.get("proxy-groups").and_then(Value::as_sequence) {
+                names.extend(
+                    groups
+                        .iter()
+                        .filter_map(|group| group.get("name").and_then(Value::as_str))
+                        .map(str::to_owned),
+                );
+            }
+        }
+        names
+    };
+    let result = async {
+        let socket = crate::config::IClashTemp::guard_external_controller_ipc();
+        let client = handle::Handle::mihomo().await;
+        let api = NativeModeApi {
+            client: &client,
+            socket: socket.as_str(),
+        };
+        let applied = apply_mode(&api, mode.as_str(), preferred_proxy.as_deref(), &preferences).await?;
+        let mut mapping = Mapping::new();
+        mapping.insert(Value::from("mode"), Value::from(mode.as_str()));
+        let clash = Config::clash().await;
+        clash.edit_draft(|draft| draft.patch_config(&mapping));
+        if let Err(error) = clash.latest_arc().save_config().await {
+            clash.discard();
+            if applied.rollback(&api).await.is_err() {
+                anyhow::bail!("模式保存失败且内核还原失败，请刷新状态后重试");
+            }
+            return Err(error.context("模式保存失败，已还原原有模式"));
+        }
+        clash.apply();
+        drop(client);
+        Config::runtime().await.edit_draft(|runtime| {
+            if let Some(config) = &mut runtime.config {
+                config.insert("mode".into(), mode.as_str().into());
+            }
+        });
+        Config::runtime().await.apply();
+        if let Some(target) = &applied.global_target
+            && save_global_choice(target).await.is_err()
+        {
+            logging!(warn, Type::ProxyMode, "[ProxyDiag] global_choice_persist_failed=true");
+        }
+        Ok::<_, anyhow::Error>(applied.config)
+    }
+    .await;
+    match &result {
+        Ok(_) => {
+            logging!(
+                info,
+                Type::ProxyMode,
+                "[ProxyDiag] mode_applied requested={} verified=true global_proxy_required={}",
+                mode,
+                mode == "global"
+            );
+            handle::Handle::refresh_clash();
+            tray::Tray::global().update_menu_and_icon().await;
+            if Config::verge().await.data_arc().auto_close_connection.unwrap_or(false) {
                 after_change_clash_mode();
             }
         }
-        Err(err) => logging!(error, Type::Core, "{err}"),
+        Err(error) => {
+            logging!(
+                warn,
+                Type::ProxyMode,
+                "[ProxyDiag] mode_failed requested={} reason={}",
+                mode,
+                error
+            );
+            handle::Handle::refresh_clash();
+        }
     }
+    result
 }
 
 /// Test delay to a URL through proxy.

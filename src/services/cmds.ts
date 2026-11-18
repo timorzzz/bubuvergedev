@@ -3,7 +3,9 @@ import dayjs from "dayjs";
 import type { getProxies, getProxyProviders } from "tauri-plugin-mihomo-api";
 
 import { showNotice } from "@/services/notice-service";
+import { queryClient } from "@/services/query-client";
 import type { BluelayerFailureReason } from "@/utils/bluelayer-diagnostics";
+import { normalizeCoreConfig } from "@/utils/core-config";
 import { debugLog } from "@/utils/debug";
 
 export async function writeBluelayerDiagnostic(diagnostic: {
@@ -31,6 +33,12 @@ export async function getMihomoProxies() {
 	return invoke<Awaited<ReturnType<typeof getProxies>>>(
 		"read_bluelayer_core_snapshot",
 		{ kind: "proxies" },
+	);
+}
+
+export async function getMihomoConfig() {
+	return normalizeCoreConfig(
+		await invoke("read_bluelayer_core_snapshot", { kind: "config" }),
 	);
 }
 
@@ -138,8 +146,13 @@ export async function patchClashConfig(payload: Partial<IConfigData>) {
 	return invoke<void>("patch_clash_config", { payload });
 }
 
-export async function patchClashMode(payload: string) {
-	return invoke<void>("patch_clash_mode", { payload });
+export async function patchClashMode(payload: string, preferredProxy?: string) {
+	const confirmed = normalizeCoreConfig(
+		await invoke("patch_clash_mode", { payload, preferredProxy }),
+	);
+	await queryClient.cancelQueries({ queryKey: ["getClashConfig"] });
+	queryClient.setQueryData(["getClashConfig"], confirmed);
+	return confirmed;
 }
 
 export async function openBluelayerPanelWindow(

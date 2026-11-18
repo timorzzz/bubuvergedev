@@ -34,9 +34,10 @@ pub async fn patch_clash_config(payload: Mapping) -> CmdResult {
 
 /// 修改Clash模式
 #[tauri::command]
-pub async fn patch_clash_mode(payload: String) -> CmdResult {
-    feat::change_clash_mode(payload).await;
-    Ok(())
+pub async fn patch_clash_mode(payload: String, preferred_proxy: Option<String>) -> CmdResult<serde_json::Value> {
+    feat::change_clash_mode_with_proxy(payload, preferred_proxy)
+        .await
+        .stringify_err()
 }
 
 /// 切换Clash核心
