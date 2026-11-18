@@ -1,11 +1,96 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import { runInNewContext } from "node:vm";
 
+import yaml from "js-yaml";
 import ts from "typescript";
 
 import { normalizeCoreConfig } from "../../src/utils/core-config.ts";
+import { modeTestCargoArgs } from "../mode-test-command.mjs";
+
+test("real smoke command retains Intel target on an ARM runner before accessing resources", () => {
+	const args = JSON.parse(
+		execFileSync(
+			process.execPath,
+			[
+				fileURLToPath(new URL("./mode-routing-smoke.mjs", import.meta.url)),
+				"x86_64-apple-darwin",
+				"--print-cargo-args",
+			],
+			{
+				encoding: "utf8",
+				env: { ...process.env, CARGO_BUILD_TARGET: "aarch64-apple-darwin" },
+			},
+		),
+	);
+	assert.deepEqual(
+		args,
+		modeTestCargoArgs("x86_64-apple-darwin", { realCore: true }),
+	);
+	assert.equal(args[args.indexOf("--target") + 1], "x86_64-apple-darwin");
+});
+
+test("mode tests compile for the package architecture, never implicitly for the runner", () => {
+	for (const target of [
+		"x86_64-pc-windows-msvc",
+		"x86_64-unknown-linux-gnu",
+		"x86_64-apple-darwin",
+		"aarch64-apple-darwin",
+	]) {
+		for (const realCore of [false, true]) {
+			const args = modeTestCargoArgs(target, { realCore });
+			assert.equal(args[args.indexOf("--target") + 1], target);
+			assert.equal(args.filter((arg) => arg === "--target").length, 1);
+			assert(args.includes("--no-default-features"));
+			assert.equal(args.includes("--ignored"), realCore);
+		}
+	}
+	for (const target of [undefined, "", "unsupported"]) {
+		assert.throws(() => modeTestCargoArgs(target), /supported package target/);
+	}
+	const intelArgs = modeTestCargoArgs("x86_64-apple-darwin", {
+		realCore: true,
+	});
+	const cargoTarget = (args, host) =>
+		args.includes("--target") ? args[args.indexOf("--target") + 1] : host;
+	assert.equal(
+		cargoTarget(["test", "--no-default-features"], "aarch64-apple-darwin"),
+		"aarch64-apple-darwin",
+	);
+	assert.equal(
+		cargoTarget(intelArgs, "aarch64-apple-darwin"),
+		"x86_64-apple-darwin",
+	);
+});
+
+test("all Auto Build mode test steps bind Cargo to their prepared package resources", () => {
+	const workflow = yaml.load(
+		readFileSync(
+			new URL("../../.github/workflows/autobuild.yml", import.meta.url),
+			"utf8",
+		),
+	);
+	const expectedCommand = `cargo ${modeTestCargoArgs("x86_64-apple-darwin")
+		.map((arg) =>
+			arg === "x86_64-apple-darwin" ? "${{ matrix.target }}" : arg,
+		)
+		.join(" ")}`;
+	let count = 0;
+	for (const job of Object.values(workflow.jobs)) {
+		const step = job.steps?.find(
+			(item) =>
+				item.name === "Test proxy mode feedback and real traffic recovery",
+		);
+		if (!step) continue;
+		count++;
+		assert.equal(job.env.BLUELAYER_BUILD_TARGET, "${{ matrix.target }}");
+		assert(step.run.includes(expectedCommand));
+	}
+	assert.equal(count, 2);
+});
 
 test("core mode remains readable without optional plugin metadata", () => {
 	for (const mode of ["rule", "global", "direct"]) {

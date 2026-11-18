@@ -236,7 +236,7 @@ jobs:
       - name: Test proxy mode feedback and real traffic recovery
         run: |
           node --test scripts/tests/mode-routing.test.mjs
-          cargo test --locked -p bluelayer --no-default-features --lib feat::clash_mode::tests
+          cargo test --locked --target ${{ matrix.target }} -p bluelayer --no-default-features --lib feat::clash_mode::tests
           node scripts/tests/mode-routing-smoke.mjs ${{ matrix.target }}
 
       - name: Check application platform-specific service types
@@ -390,7 +390,7 @@ jobs:
       - name: Test proxy mode feedback and real traffic recovery
         run: |
           node --test scripts/tests/mode-routing.test.mjs
-          cargo test --locked -p bluelayer --no-default-features --lib feat::clash_mode::tests
+          cargo test --locked --target ${{ matrix.target }} -p bluelayer --no-default-features --lib feat::clash_mode::tests
           node scripts/tests/mode-routing-smoke.mjs ${{ matrix.target }}
 
       - name: Check application platform-specific service types

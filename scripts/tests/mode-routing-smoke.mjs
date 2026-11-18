@@ -8,16 +8,15 @@ import { basename, dirname, join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
+import { modeTestCargoArgs } from "../mode-test-command.mjs";
+
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const target = process.argv[2];
-assert(
-	new Set([
-		"x86_64-pc-windows-msvc",
-		"aarch64-apple-darwin",
-		"x86_64-apple-darwin",
-		"x86_64-unknown-linux-gnu",
-	]).has(target),
-);
+const cargoArgs = modeTestCargoArgs(target, { realCore: true });
+if (process.argv.includes("--print-cargo-args")) {
+	console.log(JSON.stringify(cargoArgs));
+	process.exit(0);
+}
 const windows = process.platform === "win32";
 const binary = join(
 	root,
@@ -144,33 +143,18 @@ try {
 		}
 		assert(ready, "Isolated routing fixture was not ready");
 		const code = await new Promise((done, reject) => {
-			const cargo = spawn(
-				"cargo",
-				[
-					"test",
-					"--locked",
-					"-p",
-					"bluelayer",
-					"--no-default-features",
-					"--lib",
-					"feat::clash_mode::tests::real_core_routes_traffic_and_recovers_without_resetting_user_data",
-					"--",
-					"--ignored",
-					"--exact",
-				],
-				{
-					cwd: root,
-					windowsHide: true,
-					stdio: "inherit",
-					env: {
-						...process.env,
-						BLUELAYER_SMOKE_SOCKET: socket,
-						BLUELAYER_SMOKE_PROXY: `http://127.0.0.1:${mixedPort}`,
-						BLUELAYER_SMOKE_DESTINATION: `http://127.0.0.1:${directPort}/`,
-						...(restart ? { BLUELAYER_SMOKE_RESTART: "1" } : {}),
-					},
+			const cargo = spawn("cargo", cargoArgs, {
+				cwd: root,
+				windowsHide: true,
+				stdio: "inherit",
+				env: {
+					...process.env,
+					BLUELAYER_SMOKE_SOCKET: socket,
+					BLUELAYER_SMOKE_PROXY: `http://127.0.0.1:${mixedPort}`,
+					BLUELAYER_SMOKE_DESTINATION: `http://127.0.0.1:${directPort}/`,
+					...(restart ? { BLUELAYER_SMOKE_RESTART: "1" } : {}),
 				},
-			);
+			});
 			const timer = setTimeout(() => cargo.kill(), 300_000);
 			cargo.once("error", (error) => {
 				clearTimeout(timer);
